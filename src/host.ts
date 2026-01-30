@@ -40,8 +40,9 @@ import type {
   ConnectPayload,
   PasskeySignPayload,
   DerivationSignPayload,
-  DeriveAddressPayload,
+  DeriveAddressOptions,
   DeriveAddressResult,
+  DeriveAddressPayload,
 } from "./types";
 import { IframeError } from "./types";
 import { IframeChannelBase, createMessage } from "./channel";
@@ -122,11 +123,18 @@ export class IframeHost extends IframeChannelBase {
   async connectWithSignerType(options: ConnectOptions): Promise<ConnectResult> {
     await this.ensureIframeReady();
 
-    const payload: ConnectPayload = {
-      signerType: options.signerType,
-      dappName: options.dappName,
-      dappIcon: options.dappIcon,
-    };
+    // signerType에 따라 페이로드 구성
+    const payload: ConnectPayload =
+      options.signerType === "passkey"
+        ? {
+            signerType: "passkey",
+            dappName: options.dappName,
+            dappIcon: options.dappIcon,
+          }
+        : {
+            signerType: "derivation",
+            // derivation은 범용 지갑이므로 dApp 정보 없음
+          };
 
     const message = createMessage("CONNECT", payload);
     this.postToIframe(message);
@@ -179,18 +187,56 @@ export class IframeHost extends IframeChannelBase {
   }
 
   /**
+   * 주소 파생 (DerivationSigner 전용)
+   *
+   * @param options 파생 옵션 (keyIndex, curve, group 등)
+   * @returns 파생된 주소 정보
+   *
+   * @example
+   * ```typescript
+   * const { address } = await wallet.deriveAddress({
+   *   keyIndex: 0,
+   *   group: "evm",
+   * });
+   * // → { address: { address: "0x...", keyIndex: 0, curve: "secp256k1", group: "evm" } }
+   * ```
+   */
+  async deriveAddress(options: DeriveAddressOptions): Promise<DeriveAddressResult> {
+    this.assertReady();
+
+    const payload: DeriveAddressPayload = {
+      keyIndex: options.keyIndex,
+      curve: options.curve ?? "secp256k1",
+      group: options.group ?? "evm",
+      bitcoinAddressType: options.bitcoinAddressType,
+      bitcoinNetwork: options.bitcoinNetwork,
+    };
+
+    const message = createMessage("DERIVE_ADDRESS", payload);
+    this.postToIframe(message);
+
+    return await this.requestManager.register<DeriveAddressResult>(message.id);
+  }
+
+  /**
    * DerivationSigner로 서명
    *
    * @param hash 서명할 해시
-   * @param options address를 포함한 서명 옵션
+   * @param options address 또는 (group + keyIndex)를 포함한 서명 옵션
    * @returns 체인에 맞는 서명 포맷
    *
    * @example
    * ```typescript
+   * // 방법 1: address로 서명
    * const sig = await wallet.signWithDerivation(txHash, {
    *   address: "0x1234...abcd",
    * });
-   * // → { signerType: "derivation", address, signature: "0x..." }
+   *
+   * // 방법 2: group + keyIndex로 서명
+   * const sig = await wallet.signWithDerivation(txHash, {
+   *   group: "evm",
+   *   keyIndex: 0,
+   * });
    * ```
    */
   async signWithDerivation(
@@ -198,6 +244,17 @@ export class IframeHost extends IframeChannelBase {
     options: DerivationSignOptions
   ): Promise<DerivationSignResult> {
     this.assertReady();
+
+    // XOR 검증: address 또는 (group + keyIndex) 중 하나만
+    const hasAddress = !!options.address;
+    const hasGroupKey = !!(options.group && options.keyIndex !== undefined);
+
+    if (hasAddress === hasGroupKey) {
+      throw new IframeError(
+        "VALIDATION_FAILED",
+        "address 또는 (group + keyIndex) 중 하나만 제공해야 합니다"
+      );
+    }
 
     // requireConfirmation=true일 때는 트랜잭션 확인 모달 표시
     if (options.requireConfirmation) {
@@ -207,6 +264,8 @@ export class IframeHost extends IframeChannelBase {
     const payload: DerivationSignPayload = {
       hash,
       address: options.address,
+      group: options.group,
+      keyIndex: options.keyIndex,
       requireConfirmation: options.requireConfirmation,
       transactionInfo: options.transactionInfo,
     };
@@ -228,59 +287,19 @@ export class IframeHost extends IframeChannelBase {
     }
   }
 
-  /**
-   * 새 파생 주소 생성
-   *
-   * @param keyIndex 파생할 키 인덱스
-   * @param options 파생 옵션 (curve, group)
-   * @returns 파생 결과
-   *
-   * @example
-   * ```typescript
-   * const result = await wallet.deriveAddress(1);
-   * if (result.success && result.address) {
-   *   console.log("새 주소:", result.address.address);
-   * }
-   * ```
-   */
-  async deriveAddress(
-    keyIndex: number,
-    options?: {
-      curve?: "secp256k1" | "ed25519";
-      group?: "evm" | "solana" | "bitcoin";
-      bitcoinAddressType?: "p2wpkh" | "p2tr";
-      bitcoinNetwork?: "mainnet" | "testnet4";
-    }
-  ): Promise<DeriveAddressResult> {
-    this.assertReady();
-
-    const payload: DeriveAddressPayload = {
-      keyIndex,
-      curve: options?.curve ?? "secp256k1",
-      group: options?.group ?? "evm",
-      bitcoinAddressType: options?.bitcoinAddressType,
-      bitcoinNetwork: options?.bitcoinNetwork,
-    };
-
-    const message = createMessage("DERIVE_ADDRESS", payload);
-    this.postToIframe(message);
-
-    return this.requestManager.register<DeriveAddressResult>(message.id);
-  }
-
   // ==========================================================================
-  // UI 제어
+  // Private: UI 제어
   // ==========================================================================
 
-  /** 모달 표시 */
-  show(): void {
+  /** 모달 표시 (내부 전용) */
+  private show(): void {
     if (this.overlay) {
       this.overlay.style.display = "flex";
     }
   }
 
-  /** 모달 숨기기 */
-  hide(): void {
+  /** 모달 숨기기 (내부 전용) */
+  private hide(): void {
     if (this.overlay) {
       this.overlay.style.display = "none";
     }
@@ -350,6 +369,7 @@ export class IframeHost extends IframeChannelBase {
       this.requestManager.resolve(payload.requestId, payload.data);
     });
 
+    // DERIVE_ADDRESS_RESULT 핸들러 추가
     this.on("DERIVE_ADDRESS_RESULT", (message) => {
       const payload = message.payload as {
         requestId: string;

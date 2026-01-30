@@ -60,13 +60,13 @@ export interface TransactionInfo {
 
 /** 메시지 종류 */
 export type IframeMessageType =
-  // 부모 → iframe (새 API)
+  // 부모 → iframe
   | "CONNECT" // SignerType 기반 연결
   | "SIGN_WITH_PASSKEY" // PasskeySigner 서명
   | "SIGN_WITH_DERIVATION" // DerivationSigner 서명
-  | "DERIVE_ADDRESS" // 새 주소 파생 요청
+  | "DERIVE_ADDRESS" // 주소 파생 요청
   | "DESTROY" // 세션 종료
-  // iframe → 부모 (새 API)
+  // iframe → 부모
   | "READY" // iframe 준비 완료
   | "CONNECT_RESULT" // 연결 결과
   | "NEEDS_ONBOARDING" // 온보딩 필요 (지갑 없음)
@@ -106,12 +106,16 @@ export interface PasskeyInfo {
   createdAt: number;
   /** 사용자 지정 라벨 */
   label?: string;
+  /** WebAuthn userId (base64url) - 외부 서비스 연동용 */
+  userId?: string;
 }
 
-/** PasskeySigner 연결 옵션 */
+/** PasskeySigner 연결 옵션 (dApp 전용) */
 export interface PasskeyConnectOptions {
   signerType: "passkey";
+  /** dApp 이름 (PassKey displayName에 사용) */
   dappName?: string;
+  /** dApp 아이콘 URL */
   dappIcon?: string;
 }
 
@@ -169,26 +173,30 @@ export interface DerivationAddressInfo {
   bitcoinNetwork?: BitcoinNetwork;
 }
 
-/** DerivationSigner 연결 옵션 */
+/**
+ * DerivationSigner 연결 옵션 (범용 지갑)
+ *
+ * ⚠️ Derivation은 범용 지갑이므로 dApp 특정 정보를 포함하지 않습니다.
+ */
 export interface DerivationConnectOptions {
   signerType: "derivation";
-  dappName?: string;
-  dappIcon?: string;
+  // dappName, dappIcon 없음 (범용 지갑)
 }
 
 /** DerivationSigner 연결 결과 */
 export interface DerivationConnectResult {
   signerType: "derivation";
-  /** 사용 가능한 파생 주소 목록 */
-  addresses: DerivationAddressInfo[];
-  /** 현재 활성화된 주소 */
-  activeAddress?: DerivationAddressInfo;
+  // addresses, activeAddress 제거 (iframe localStorage 종속 제거)
 }
 
 /** DerivationSigner 서명 옵션 */
 export interface DerivationSignOptions {
-  /** 서명할 주소 - 지갑이 내부에서 메타데이터 조회 */
-  address: string;
+  /** 서명할 주소 (XOR: address 또는 group+keyIndex 중 하나만) */
+  address?: string;
+  /** 파생 키 그룹 (XOR: address 또는 group+keyIndex 중 하나만) */
+  group?: DerivationGroup;
+  /** 파생 키 인덱스 (XOR: address 또는 group+keyIndex 중 하나만) */
+  keyIndex?: number;
   /** 트랜잭션 확인 모달 표시 여부 (선택) */
   requireConfirmation?: boolean;
   /** 트랜잭션 정보 (requireConfirmation=true일 때 권장) */
@@ -202,6 +210,32 @@ export interface DerivationSignResult {
   /** 체인에 맞는 서명 포맷 */
   signature: Hex;
 }
+
+// -----------------------------------------------------------------------------
+// Derive Address Types
+// -----------------------------------------------------------------------------
+
+/** 주소 파생 요청 옵션 */
+export interface DeriveAddressOptions {
+  /** 파생 키 인덱스 */
+  keyIndex: number;
+  /** 파생 커브 (기본값: secp256k1) */
+  curve?: DerivationCurve;
+  /** 체인 그룹 (기본값: evm) */
+  group?: DerivationGroup;
+  /** Bitcoin 주소 타입 (bitcoin 그룹 전용) */
+  bitcoinAddressType?: BitcoinAddressType;
+  /** Bitcoin 네트워크 (bitcoin 그룹 전용) */
+  bitcoinNetwork?: BitcoinNetwork;
+}
+
+/** 주소 파생 결과 */
+export interface DeriveAddressResult {
+  address: DerivationAddressInfo;
+}
+
+/** 주소 파생 요청 페이로드 */
+export type DeriveAddressPayload = DeriveAddressOptions;
 
 // -----------------------------------------------------------------------------
 // Union Types
@@ -223,12 +257,22 @@ export type SignResult = PasskeySignResult | DerivationSignResult;
 // 메시지 페이로드
 // =============================================================================
 
-/** Connect 요청 페이로드 */
-export interface ConnectPayload {
-  signerType: SignerType;
-  dappName?: string;
-  dappIcon?: string;
-}
+/**
+ * Connect 요청 페이로드
+ *
+ * PassKey: dApp 전용 (dappName, dappIcon 포함)
+ * Derivation: 범용 지갑 (dApp 정보 없음)
+ */
+export type ConnectPayload =
+  | {
+      signerType: "passkey";
+      dappName?: string;
+      dappIcon?: string;
+    }
+  | {
+      signerType: "derivation";
+      // dappName, dappIcon 없음
+    };
 
 /** PasskeySigner 서명 요청 페이로드 */
 export interface PasskeySignPayload {
@@ -243,35 +287,16 @@ export interface PasskeySignPayload {
 /** DerivationSigner 서명 요청 페이로드 */
 export interface DerivationSignPayload {
   hash: Hash;
-  address: string;
+  /** 서명할 주소 (XOR: address 또는 group+keyIndex 중 하나만) */
+  address?: string;
+  /** 파생 키 그룹 (XOR: address 또는 group+keyIndex 중 하나만) */
+  group?: DerivationGroup;
+  /** 파생 키 인덱스 (XOR: address 또는 group+keyIndex 중 하나만) */
+  keyIndex?: number;
   /** 트랜잭션 확인 모달 표시 여부 (선택) */
   requireConfirmation?: boolean;
   /** 트랜잭션 정보 (requireConfirmation=true일 때 필수) */
   transactionInfo?: TransactionInfo;
-}
-
-/** 주소 파생 요청 페이로드 */
-export interface DeriveAddressPayload {
-  /** 파생할 키 인덱스 */
-  keyIndex: number;
-  /** 파생 커브 (기본값: secp256k1) */
-  curve?: DerivationCurve;
-  /** 체인 그룹 (기본값: evm) */
-  group?: DerivationGroup;
-  /** Bitcoin 주소 타입 (bitcoin 그룹 전용) */
-  bitcoinAddressType?: BitcoinAddressType;
-  /** Bitcoin 네트워크 (bitcoin 그룹 전용) */
-  bitcoinNetwork?: BitcoinNetwork;
-}
-
-/** 주소 파생 결과 */
-export interface DeriveAddressResult {
-  /** 성공 여부 */
-  success: boolean;
-  /** 파생된 주소 정보 */
-  address?: DerivationAddressInfo;
-  /** 에러 메시지 (실패 시) */
-  error?: string;
 }
 
 // =============================================================================
@@ -326,4 +351,99 @@ export interface IframeHostConfig {
   locale?: SupportedLocale;
   /** dApp origin (기본값: window.location.origin). iframe이 postMessage origin 검증에 사용 */
   origin?: string;
+}
+
+// =============================================================================
+// 타입 가드 (Type Guards)
+// =============================================================================
+
+/**
+ * ConnectResult가 PasskeyConnectResult인지 확인
+ *
+ * @example
+ * ```typescript
+ * const result = await wallet.connectWithSignerType({ signerType: "passkey" });
+ *
+ * if (isPasskeyResult(result)) {
+ *   // TypeScript가 result를 PasskeyConnectResult로 인식
+ *   console.log(result.passkeys);
+ * }
+ * ```
+ */
+export function isPasskeyResult(result: ConnectResult): result is PasskeyConnectResult {
+  return result.signerType === "passkey";
+}
+
+/**
+ * ConnectResult가 DerivationConnectResult인지 확인
+ *
+ * @example
+ * ```typescript
+ * const result = await wallet.connectWithSignerType({ signerType: "derivation" });
+ *
+ * if (isDerivationResult(result)) {
+ *   // TypeScript가 result를 DerivationConnectResult로 인식
+ *   console.log(result.addresses);
+ * }
+ * ```
+ */
+export function isDerivationResult(result: ConnectResult): result is DerivationConnectResult {
+  return result.signerType === "derivation";
+}
+
+/**
+ * SignResult가 PasskeySignResult인지 확인
+ */
+export function isPasskeySignResult(result: SignResult): result is PasskeySignResult {
+  return result.signerType === "passkey";
+}
+
+/**
+ * SignResult가 DerivationSignResult인지 확인
+ */
+export function isDerivationSignResult(result: SignResult): result is DerivationSignResult {
+  return result.signerType === "derivation";
+}
+
+// =============================================================================
+// 참고용 상수 (Reference Only)
+// =============================================================================
+
+/**
+ * RIP-7212 네이티브 지원 체인 목록 (참고용)
+ *
+ * ⚠️ 주의: 자동 선택에 사용하지 마세요. 명시적 선택이 안전합니다.
+ *
+ * @see https://github.com/ethereum/RIPs/blob/master/RIPS/rip-7212.md
+ */
+export const RIP7212_NATIVE_CHAINS = [
+  324, // zkSync Era
+  1101, // Polygon zkEVM
+  59144, // Linea
+  534352, // Scroll
+] as const;
+
+/**
+ * 체인이 RIP-7212을 네이티브 지원하는지 확인 (참고용)
+ *
+ * ⚠️ 주의: 자동 선택에 사용하지 마세요.
+ * 이 함수는 dApp이 판단에 참고할 수 있도록 제공되지만,
+ * signerType은 항상 명시적으로 선택해야 합니다.
+ *
+ * @example
+ * ```typescript
+ * // ❌ 나쁜 예: 자동 선택 (위험)
+ * const signerType = supportsRIP7212(chainId) ? "passkey" : "derivation";
+ *
+ * // ✅ 좋은 예: 참고만 하고 명시적 선택
+ * if (supportsRIP7212(324)) {
+ *   console.log("zkSync Era는 PassKey를 권장합니다");
+ * }
+ * const result = await wallet.connectWithSignerType({
+ *   signerType: "passkey", // 명시적 선택
+ * });
+ * ```
+ */
+export function supportsRIP7212(chainId: number): boolean {
+  return (RIP7212_NATIVE_CHAINS as readonly number[]).includes(chainId);
 }

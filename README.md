@@ -38,7 +38,102 @@ pnpm add @ohmywallet/connect
 yarn add @ohmywallet/connect
 ```
 
+## Which Signer Should I Use?
+
+OhMyWallet supports **two signing methods**. Choose explicitly based on your needs:
+
+### 🔐 PassKey Signer (Hardware Security ★★★★★)
+
+**Recommended for**: Chains with [RIP-7212](https://github.com/ethereum/RIPs/blob/master/RIPS/rip-7212.md) support
+
+**Pros:**
+
+- ✅ **Hardware-secured**: Private key **never** exposed (stored in device secure chip)
+- ✅ **WebAuthn**: Uses biometrics (Face ID, Touch ID, Windows Hello)
+- ✅ **P-256 native**: Direct signature verification on-chain
+- ✅ **Maximum security**: Best protection against key theft
+
+**Cons:**
+
+- ❌ **Limited chains**: Only RIP-7212 compatible chains
+- ❌ **Smart wallet required**: Ethereum mainnet needs AA (Account Abstraction)
+
+**Supported Chains:**
+
+| Chain         | Chain ID | Native RIP-7212 | Notes                 |
+| ------------- | -------- | --------------- | --------------------- |
+| zkSync Era    | 324      | ✅              | Full support          |
+| Polygon zkEVM | 1101     | ✅              | Full support          |
+| Linea         | 59144    | ✅              | Full support          |
+| Scroll        | 534352   | ✅              | Full support          |
+| Ethereum\*    | 1        | ⚠️              | Requires smart wallet |
+| Arbitrum\*    | 42161    | ⚠️              | Requires smart wallet |
+| Optimism\*    | 10       | ⚠️              | Requires smart wallet |
+
+\*Can use PassKey via Account Abstraction (ERC-4337)
+
+---
+
+### 🔑 Derivation Signer (Universal ★★★☆☆)
+
+**Recommended for**: All chains without RIP-7212, or multi-chain dApps
+
+**Pros:**
+
+- ✅ **Universal**: Works on **all** chains (EVM, Solana, Bitcoin, etc.)
+- ✅ **Multi-chain**: Single PassKey → derive keys for any chain
+- ✅ **No AA required**: Works with EOAs (regular wallets)
+- ✅ **All curves**: secp256k1 (EVM/Bitcoin), ed25519 (Solana)
+
+**Cons:**
+
+- ⚠️ **Lower security**: Private key exists in JavaScript memory (iframe-isolated)
+- ⚠️ **Software-based**: Not hardware-secured like PassKey
+
+**Supported Chains:**
+
+- **EVM**: Ethereum, Arbitrum, Optimism, Base, BSC, Polygon, Avalanche, Fantom...
+- **Non-EVM**: Solana, Bitcoin, Cosmos, Near...
+- **All chains**: Any blockchain using secp256k1 or ed25519
+
+---
+
+### Decision Guide
+
+```
+Your dApp uses...
+
+┌─────────────────────────────────┐
+│  zkSync Era, Polygon zkEVM,     │
+│  Linea, Scroll                  │  →  ✅ Use PassKey (best security)
+└─────────────────────────────────┘
+
+┌─────────────────────────────────┐
+│  Ethereum mainnet (EOA)         │
+│  Arbitrum, Optimism, Base       │  →  ✅ Use Derivation
+│  BSC, Polygon PoS               │
+└─────────────────────────────────┘
+
+┌─────────────────────────────────┐
+│  Solana, Bitcoin                │  →  ✅ Use Derivation (only option)
+└─────────────────────────────────┘
+
+┌─────────────────────────────────┐
+│  Multi-chain support            │  →  ✅ Use Derivation (universal)
+└─────────────────────────────────┘
+
+┌─────────────────────────────────┐
+│  Ethereum mainnet (AA wallet)   │  →  ✅ Use PassKey (if you implement AA)
+└─────────────────────────────────┘
+```
+
+**⚠️ Important**: PassKey and Derivation generate **different addresses**. Choose one and stick with it for your dApp.
+
+---
+
 ## Quick Start
+
+### Option 1: PassKey Signer (Hardware Security)
 
 ```typescript
 import { IframeHost } from "@ohmywallet/connect";
@@ -48,26 +143,53 @@ const wallet = new IframeHost({
   iframeSrc: "https://vault.ohmywallet.xyz",
 });
 
-// 2. Connect with signer type
-const passkey = await wallet.connectWithSignerType({
-  signerType: "passkey",
+// 2. Connect with PassKey
+const result = await wallet.connectWithSignerType({
+  signerType: "passkey", // Explicit choice
   dappName: "My Awesome dApp",
   dappIcon: "https://my-dapp.com/icon.png",
 });
 
-// 3. Passkey signature (P-256)
-const messageHash = "0x...";
-const passkeySig = await wallet.signWithPasskey(messageHash, {
-  keyId: passkey.passkeys[0].keyId,
+// 3. Sign with active PassKey (P-256)
+if (!result.activePasskey) {
+  throw new Error("No active PassKey");
+}
+
+const sig = await wallet.signWithPasskey("0x1234...abcd", {
+  keyId: result.activePasskey.keyId, // Use active PassKey
 });
 
-// 4. Derivation signature (k1)
-const derivation = await wallet.connectWithSignerType({ signerType: "derivation" });
-const derivationSig = await wallet.signWithDerivation(messageHash, {
-  address: derivation.addresses[0].address,
+// 4. Cleanup
+wallet.destroy();
+```
+
+### Option 2: Derivation Signer (Universal)
+
+```typescript
+import { IframeHost } from "@ohmywallet/connect";
+
+// 1. Create wallet instance
+const wallet = new IframeHost({
+  iframeSrc: "https://vault.ohmywallet.xyz",
 });
 
-// 5. Cleanup
+// 2. Connect with Derivation
+const result = await wallet.connectWithSignerType({
+  signerType: "derivation", // Explicit choice
+  dappName: "My Awesome dApp",
+  dappIcon: "https://my-dapp.com/icon.png",
+});
+
+// 3. Sign with active address (secp256k1, ed25519, etc.)
+if (!result.activeAddress) {
+  throw new Error("No active address");
+}
+
+const sig = await wallet.signWithDerivation("0x1234...abcd", {
+  address: result.activeAddress.address, // Use active address
+});
+
+// 4. Cleanup
 wallet.destroy();
 ```
 
@@ -83,14 +205,14 @@ Main class for communicating with OhMyWallet from your dApp.
 const wallet = new IframeHost(config: IframeHostConfig);
 ```
 
-| Option      | Type                   | Required | Description                                            |
-| ----------- | ---------------------- | -------- | ------------------------------------------------------ |
-| `iframeSrc` | `string`               | ✅       | OhMyWallet iframe URL                                  |
-| `timeout`   | `number`               | -        | Request timeout (default: 30000ms)                     |
-| `sandbox`   | `string`               | -        | iframe sandbox attribute                               |
-| `container` | `HTMLElement`          | -        | Container for iframe insertion                         |
-| `locale`    | `SupportedLocale`      | -        | iframe UI locale - 15 languages supported (default: auto-detect) |
-| `origin`    | `string`               | -        | dApp origin (default: `window.location.origin`)        |
+| Option      | Type              | Required | Description                                                      |
+| ----------- | ----------------- | -------- | ---------------------------------------------------------------- |
+| `iframeSrc` | `string`          | ✅       | OhMyWallet iframe URL                                            |
+| `timeout`   | `number`          | -        | Request timeout (default: 30000ms)                               |
+| `sandbox`   | `string`          | -        | iframe sandbox attribute                                         |
+| `container` | `HTMLElement`     | -        | Container for iframe insertion                                   |
+| `locale`    | `SupportedLocale` | -        | iframe UI locale - 15 languages supported (default: auto-detect) |
+| `origin`    | `string`          | -        | dApp origin (default: `window.location.origin`)                  |
 
 #### Methods
 
@@ -181,7 +303,7 @@ function useOhMyWallet() {
         signerType: "derivation",
         dappName: "My React dApp",
       });
-      setAddress(result.addresses[0]?.address ?? null);
+      setAddress(result.activeAddress?.address ?? null);
     } finally {
       setIsConnecting(false);
     }
@@ -244,7 +366,7 @@ async function connect() {
       signerType: "derivation",
       dappName: "My Vue dApp",
     });
-    address.value = result.addresses[0]?.address ?? null;
+    address.value = result.activeAddress?.address ?? null;
   } finally {
     isConnecting.value = false;
   }
@@ -273,7 +395,7 @@ async function connect() {
       signerType: "derivation",
       dappName: "My dApp",
     });
-    const address = result.addresses[0]?.address;
+    const address = result.activeAddress?.address;
     document.getElementById("address").textContent = address ?? "-";
   };
 
@@ -355,21 +477,21 @@ try {
 
 ### Error Codes
 
-| Code                     | Description                              |
-| ------------------------ | ---------------------------------------- |
-| `NOT_INITIALIZED`        | Wallet not initialized                   |
-| `ALREADY_INITIALIZED`    | Already initialized                      |
-| `TIMEOUT`                | Request timed out                        |
-| `DESTROYED`              | Instance destroyed                       |
-| `SIGN_FAILED`            | Signature failed                         |
-| `INVALID_MESSAGE`        | Invalid message format                   |
-| `INVALID_ORIGIN`         | Unauthorized origin                      |
-| `VALIDATION_FAILED`      | Payload validation failed                |
-| `CREDENTIAL_INACCESSIBLE`| PassKey credential not accessible        |
-| `ALREADY_EXISTS`         | Wallet already exists                    |
-| `USER_CANCELLED`         | User cancelled the operation             |
-| `UNKNOWN_KEY`            | PassKey keyId not found                  |
-| `UNKNOWN_ADDRESS`        | Derivation address not found             |
+| Code                      | Description                       |
+| ------------------------- | --------------------------------- |
+| `NOT_INITIALIZED`         | Wallet not initialized            |
+| `ALREADY_INITIALIZED`     | Already initialized               |
+| `TIMEOUT`                 | Request timed out                 |
+| `DESTROYED`               | Instance destroyed                |
+| `SIGN_FAILED`             | Signature failed                  |
+| `INVALID_MESSAGE`         | Invalid message format            |
+| `INVALID_ORIGIN`          | Unauthorized origin               |
+| `VALIDATION_FAILED`       | Payload validation failed         |
+| `CREDENTIAL_INACCESSIBLE` | PassKey credential not accessible |
+| `ALREADY_EXISTS`          | Wallet already exists             |
+| `USER_CANCELLED`          | User cancelled the operation      |
+| `UNKNOWN_KEY`             | PassKey keyId not found           |
+| `UNKNOWN_ADDRESS`         | Derivation address not found      |
 
 ## Advanced Usage
 
@@ -533,10 +655,72 @@ This package is written in TypeScript and provides complete type definitions.
 import type {
   IframeHostConfig,
   IframeHostState,
-  ConnectResultData,
-  SignResultData,
+  ConnectResult,
+  SignResult,
   IframeErrorCode,
 } from "@ohmywallet/connect";
+```
+
+### Type Guards
+
+Use type guards to safely narrow union types:
+
+```typescript
+import {
+  isPasskeyResult,
+  isDerivationResult,
+  isPasskeySignResult,
+  isDerivationSignResult,
+} from "@ohmywallet/connect";
+
+// Connect result
+const result = await wallet.connectWithSignerType({ signerType: "passkey" });
+
+if (isPasskeyResult(result)) {
+  // TypeScript knows result is PasskeyConnectResult
+  console.log(result.passkeys);
+  console.log(result.activePasskey?.keyId);
+}
+
+if (isDerivationResult(result)) {
+  // TypeScript knows result is DerivationConnectResult
+  console.log(result.addresses);
+  console.log(result.activeAddress?.address);
+}
+
+// Sign result
+const sig = await wallet.signWithPasskey(hash, { keyId });
+
+if (isPasskeySignResult(sig)) {
+  // TypeScript knows sig is PasskeySignResult
+  console.log(sig.signature.r, sig.signature.s);
+  console.log(sig.authenticatorData);
+}
+
+if (isDerivationSignResult(sig)) {
+  // TypeScript knows sig is DerivationSignResult
+  console.log(sig.signature); // Hex string
+}
+```
+
+### Reference Helpers
+
+Check chain compatibility (for reference only, not for automatic selection):
+
+```typescript
+import { supportsRIP7212, RIP7212_NATIVE_CHAINS } from "@ohmywallet/connect";
+
+// Check if chain natively supports RIP-7212
+if (supportsRIP7212(324)) {
+  console.log("zkSync Era supports PassKey natively");
+}
+
+// List of chains with native RIP-7212 support
+console.log(RIP7212_NATIVE_CHAINS); // [324, 1101, 59144, 534352]
+
+// ⚠️ Important: Do NOT use for automatic signerType selection
+// ❌ BAD: const signerType = supportsRIP7212(chainId) ? "passkey" : "derivation";
+// ✅ GOOD: Always choose signerType explicitly
 ```
 
 ## Browser Support

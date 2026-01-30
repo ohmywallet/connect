@@ -61,6 +61,10 @@ export type {
   DerivationConnectResult,
   DerivationSignOptions,
   DerivationSignResult,
+  // Derive Address (새 기능)
+  DeriveAddressOptions,
+  DeriveAddressResult,
+  DeriveAddressPayload,
   // Union 타입
   ConnectOptions,
   ConnectResult,
@@ -73,8 +77,6 @@ export type {
   ConnectPayload,
   PasskeySignPayload,
   DerivationSignPayload,
-  DeriveAddressPayload,
-  DeriveAddressResult,
   // 설정
   IframeHostConfig,
   SupportedLocale,
@@ -82,4 +84,14 @@ export type {
   IframeErrorCode,
 } from "./types";
 
-export { IframeError } from "./types";
+export {
+  IframeError,
+  // 타입 가드
+  isPasskeyResult,
+  isDerivationResult,
+  isPasskeySignResult,
+  isDerivationSignResult,
+  // 참고용 상수 & 헬퍼
+  RIP7212_NATIVE_CHAINS,
+  supportsRIP7212,
+} from "./types";
