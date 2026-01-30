@@ -1,6 +1,6 @@
 {
   "name": "@ohmywallet/connect",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "OhMyWallet dApp integration library - Secure PassKey wallet connection via iframe",
   "type": "module",
   "main": "./dist/index.js",
@@ -34,7 +34,8 @@
     "build": "tsup src/index.ts --format esm --dts",
     "dev": "tsup src/index.ts --format esm --dts --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "sync": "bash scripts/sync-standalone.sh"
   },
   "dependencies": {
     "viem": "^2.21.0"
