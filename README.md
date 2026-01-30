@@ -6,7 +6,9 @@ The official library for integrating OhMyWallet into your dApp.
 
 ## What is OhMyWallet?
 
-**OhMyWallet** is a next-generation EVM smart wallet powered by PassKeys.
+**OhMyWallet** is a next-generation multi-chain smart wallet powered by PassKeys.
+
+Supports **EVM**, **Solana**, and **Bitcoin** with a single PassKey.
 
 ### Why OhMyWallet?
 
@@ -22,8 +24,9 @@ The official library for integrating OhMyWallet into your dApp.
 - **No Seed Phrase**: Create and recover wallets with PassKey only
 - **Hardware Security**: Private keys never exposed to browser
 - **Cross-Device**: Same wallet on all devices via iCloud/Google sync
-- **Account Abstraction**: Gas sponsorship, batch transactions
-- **RIP-7212 Support**: On-chain P-256 signature verification (supported chains)
+- **Multi-Chain**: EVM, Solana, Bitcoin from one PassKey
+- **WalletConnect**: Connect to thousands of dApps
+- **15 Languages**: Full i18n support (ko, en, zh-CN, zh-TW, ja, es, fr, de, pt, ru, ar, hi, id, vi, tr)
 
 ## Installation
 
@@ -86,7 +89,7 @@ const wallet = new IframeHost(config: IframeHostConfig);
 | `timeout`   | `number`               | -        | Request timeout (default: 30000ms)                     |
 | `sandbox`   | `string`               | -        | iframe sandbox attribute                               |
 | `container` | `HTMLElement`          | -        | Container for iframe insertion                         |
-| `locale`    | `"ko" \| "en" \| "zh"` | -        | iframe UI locale (default: browser language or `"ko"`) |
+| `locale`    | `SupportedLocale`      | -        | iframe UI locale - 15 languages supported (default: auto-detect) |
 | `origin`    | `string`               | -        | dApp origin (default: `window.location.origin`)        |
 
 #### Methods
@@ -352,15 +355,21 @@ try {
 
 ### Error Codes
 
-| Code                  | Description            |
-| --------------------- | ---------------------- |
-| `NOT_INITIALIZED`     | Wallet not initialized |
-| `ALREADY_INITIALIZED` | Already initialized    |
-| `TIMEOUT`             | Request timed out      |
-| `DESTROYED`           | Instance destroyed     |
-| `SIGN_FAILED`         | Signature failed       |
-| `INVALID_ORIGIN`      | Unauthorized origin    |
-| `USER_CANCELLED`      | User cancelled         |
+| Code                     | Description                              |
+| ------------------------ | ---------------------------------------- |
+| `NOT_INITIALIZED`        | Wallet not initialized                   |
+| `ALREADY_INITIALIZED`    | Already initialized                      |
+| `TIMEOUT`                | Request timed out                        |
+| `DESTROYED`              | Instance destroyed                       |
+| `SIGN_FAILED`            | Signature failed                         |
+| `INVALID_MESSAGE`        | Invalid message format                   |
+| `INVALID_ORIGIN`         | Unauthorized origin                      |
+| `VALIDATION_FAILED`      | Payload validation failed                |
+| `CREDENTIAL_INACCESSIBLE`| PassKey credential not accessible        |
+| `ALREADY_EXISTS`         | Wallet already exists                    |
+| `USER_CANCELLED`         | User cancelled the operation             |
+| `UNKNOWN_KEY`            | PassKey keyId not found                  |
+| `UNKNOWN_ADDRESS`        | Derivation address not found             |
 
 ## Advanced Usage
 
@@ -516,19 +525,6 @@ if (process.env.NODE_ENV === "development") {
 }
 ```
 
-## Supported Chains
-
-| Chain        | Chain ID | RIP-7212 |
-| ------------ | -------- | -------- |
-| Base         | 8453     | ✅       |
-| Base Sepolia | 84532    | ✅       |
-| Optimism     | 10       | ✅       |
-| Arbitrum     | 42161    | -        |
-| Polygon      | 137      | -        |
-| Ethereum     | 1        | -        |
-
-> RIP-7212 supported chains provide the highest security with native P-256 signature verification.
-
 ## TypeScript
 
 This package is written in TypeScript and provides complete type definitions.
@@ -559,5 +555,5 @@ MIT
 ## Links
 
 - [OhMyWallet Website](https://ohmywallet.xyz)
-- [GitHub](https://github.com/anthropics/ohmywallet)
+- [GitHub](https://github.com/ohmywallet/connect)
 - [Documentation](https://docs.ohmywallet.xyz)

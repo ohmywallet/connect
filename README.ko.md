@@ -6,7 +6,9 @@ dApp에서 OhMyWallet을 통합하기 위한 공식 라이브러리입니다.
 
 ## OhMyWallet 소개
 
-**OhMyWallet**은 PassKey 기반의 차세대 EVM 스마트 지갑입니다.
+**OhMyWallet**은 PassKey 기반의 차세대 멀티체인 스마트 지갑입니다.
+
+하나의 PassKey로 **EVM**, **Solana**, **Bitcoin**을 지원합니다.
 
 ### 왜 OhMyWallet인가?
 
@@ -22,8 +24,9 @@ dApp에서 OhMyWallet을 통합하기 위한 공식 라이브러리입니다.
 - **시드 구문 없음**: PassKey만으로 지갑 생성/복구
 - **하드웨어 보안**: 개인키가 절대 브라우저에 노출되지 않음
 - **크로스 디바이스**: iCloud/Google 동기화로 모든 기기에서 동일 지갑
-- **Account Abstraction**: 가스비 대납, 배치 트랜잭션 지원
-- **RIP-7212 지원**: P-256 서명 온체인 검증 (지원 체인)
+- **멀티체인**: 하나의 PassKey로 EVM, Solana, Bitcoin 지원
+- **WalletConnect**: 수천 개의 dApp과 연동 가능
+- **15개 언어 지원**: 완벽한 i18n (ko, en, zh-CN, zh-TW, ja, es, fr, de, pt, ru, ar, hi, id, vi, tr)
 
 ## 설치
 
@@ -86,7 +89,7 @@ const wallet = new IframeHost(config: IframeHostConfig);
 | `timeout`   | `number`               | -    | 요청 타임아웃 (기본: 30000ms)                    |
 | `sandbox`   | `string`               | -    | iframe sandbox 속성                              |
 | `container` | `HTMLElement`          | -    | iframe 삽입 위치                                 |
-| `locale`    | `"ko" \| "en" \| "zh"` | -    | iframe UI 언어 (기본: 브라우저 언어 또는 `"ko"`) |
+| `locale`    | `SupportedLocale`      | -    | iframe UI 언어 - 15개 언어 지원 (기본: 자동 감지) |
 | `origin`    | `string`               | -    | dApp origin (기본: `window.location.origin`)     |
 
 #### 메서드
@@ -352,28 +355,21 @@ try {
 
 ### 에러 코드
 
-| 코드                  | 설명                   |
-| --------------------- | ---------------------- |
-| `NOT_INITIALIZED`     | 지갑이 초기화되지 않음 |
-| `ALREADY_INITIALIZED` | 이미 초기화됨          |
-| `TIMEOUT`             | 요청 시간 초과         |
-| `DESTROYED`           | 인스턴스가 파괴됨      |
-| `SIGN_FAILED`         | 서명 실패              |
-| `INVALID_ORIGIN`      | 허용되지 않은 origin   |
-| `USER_CANCELLED`      | 사용자가 취소함        |
-
-## 지원 체인
-
-| 체인         | Chain ID | RIP-7212 |
-| ------------ | -------- | -------- |
-| Base         | 8453     | ✅       |
-| Base Sepolia | 84532    | ✅       |
-| Optimism     | 10       | ✅       |
-| Arbitrum     | 42161    | -        |
-| Polygon      | 137      | -        |
-| Ethereum     | 1        | -        |
-
-> RIP-7212 지원 체인에서는 P-256 직접 서명으로 최고 수준의 보안을 제공합니다.
+| 코드                      | 설명                        |
+| ------------------------- | --------------------------- |
+| `NOT_INITIALIZED`         | 지갑이 초기화되지 않음      |
+| `ALREADY_INITIALIZED`     | 이미 초기화됨               |
+| `TIMEOUT`                 | 요청 시간 초과              |
+| `DESTROYED`               | 인스턴스가 파괴됨           |
+| `SIGN_FAILED`             | 서명 실패                   |
+| `INVALID_MESSAGE`         | 잘못된 메시지 형식          |
+| `INVALID_ORIGIN`          | 허용되지 않은 origin        |
+| `VALIDATION_FAILED`       | 페이로드 검증 실패          |
+| `CREDENTIAL_INACCESSIBLE` | PassKey 자격 증명 접근 불가 |
+| `ALREADY_EXISTS`          | 지갑이 이미 존재함          |
+| `USER_CANCELLED`          | 사용자가 취소함             |
+| `UNKNOWN_KEY`             | PassKey keyId를 찾을 수 없음|
+| `UNKNOWN_ADDRESS`         | 파생 주소를 찾을 수 없음    |
 
 ## TypeScript
 
@@ -405,5 +401,5 @@ MIT
 ## 링크
 
 - [OhMyWallet 공식 사이트](https://ohmywallet.xyz)
-- [GitHub](https://github.com/ohmywallet/ohmywallet)
+- [GitHub](https://github.com/ohmywallet/connect)
 - [문서](https://docs.ohmywallet.xyz)
