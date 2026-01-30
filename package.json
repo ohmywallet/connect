@@ -1,0 +1,71 @@
+{
+  "name": "@ohmywallet/connect",
+  "version": "0.3.0",
+  "description": "OhMyWallet dApp integration library - Secure PassKey wallet connection via iframe",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.ko.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ohmywallet/connect.git"
+  },
+  "homepage": "https://ohmywallet.xyz",
+  "bugs": {
+    "url": "https://github.com/ohmywallet/connect/issues"
+  },
+  "author": "OhMyWallet Team",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "eslint": "^9.26.0",
+    "typescript-eslint": "^8.32.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "ethereum",
+    "wallet",
+    "passkey",
+    "webauthn",
+    "iframe",
+    "dapp",
+    "smart-wallet",
+    "account-abstraction",
+    "erc-4337",
+    "eip-7702",
+    "web3",
+    "crypto",
+    "blockchain",
+    "evm",
+    "base",
+    "optimism"
+  ],
+  "license": "MIT"
+}
