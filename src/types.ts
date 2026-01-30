@@ -334,8 +334,29 @@ export class IframeError extends Error {
 // 설정 타입
 // =============================================================================
 
-/** 지원하는 로케일 */
-export type SupportedLocale = "ko" | "en" | "zh";
+/**
+ * 지원하는 로케일 (15개 언어)
+ *
+ * - Tier 1 (Critical): ko, en, zh-CN, zh-TW, es, hi
+ * - Tier 2 (High): id, vi, ru, pt, tr
+ * - Tier 3 (Medium): ja, fr, de, ar
+ */
+export type SupportedLocale =
+  | "ko"
+  | "en"
+  | "zh-CN"
+  | "zh-TW"
+  | "es"
+  | "hi"
+  | "id"
+  | "vi"
+  | "ru"
+  | "pt"
+  | "tr"
+  | "ja"
+  | "fr"
+  | "de"
+  | "ar";
 
 /** IframeHost 설정 */
 export interface IframeHostConfig {

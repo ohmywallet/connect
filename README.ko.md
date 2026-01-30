@@ -243,11 +243,44 @@ const sig = await wallet.signWithPasskey("0x1234...abcd", {
 
 ##### `signWithDerivation(hash, options): Promise<DerivationSignResult>`
 
-파생 주소(k1)로 서명합니다.
+파생 키(secp256k1/ed25519)로 서명합니다.
+
+**방법 1: address로 서명** (권장)
 
 ```typescript
 const sig = await wallet.signWithDerivation("0x1234...abcd", {
   address: derivation.addresses[0].address,
+});
+```
+
+**방법 2: group + keyIndex로 서명**
+
+```typescript
+const sig = await wallet.signWithDerivation("0x1234...abcd", {
+  group: "evm", // "evm" | "solana" | "bitcoin"
+  keyIndex: 0,
+});
+```
+
+##### `deriveAddress(options): Promise<DeriveAddressResult>`
+
+연결 없이 새 주소를 파생합니다.
+
+```typescript
+const result = await wallet.deriveAddress({
+  keyIndex: 1,
+  curve: "secp256k1", // "secp256k1" | "ed25519"
+  group: "evm", // "evm" | "solana" | "bitcoin"
+});
+// → { address: { address: "0x...", keyIndex: 1, curve: "secp256k1", group: "evm" } }
+
+// Bitcoin의 경우
+const btcResult = await wallet.deriveAddress({
+  keyIndex: 0,
+  curve: "secp256k1",
+  group: "bitcoin",
+  bitcoinAddressType: "p2wpkh", // "p2wpkh" | "p2tr"
+  bitcoinNetwork: "mainnet", // "mainnet" | "testnet4"
 });
 ```
 

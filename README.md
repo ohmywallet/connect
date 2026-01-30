@@ -243,11 +243,44 @@ const sig = await wallet.signWithPasskey("0x1234...abcd", {
 
 ##### `signWithDerivation(hash, options): Promise<DerivationSignResult>`
 
-k1 signature using a derived address.
+Signature using a derived key (secp256k1/ed25519).
+
+**Option 1: By address** (recommended)
 
 ```typescript
 const sig = await wallet.signWithDerivation("0x1234...abcd", {
   address: derivation.addresses[0].address,
+});
+```
+
+**Option 2: By group + keyIndex**
+
+```typescript
+const sig = await wallet.signWithDerivation("0x1234...abcd", {
+  group: "evm", // "evm" | "solana" | "bitcoin"
+  keyIndex: 0,
+});
+```
+
+##### `deriveAddress(options): Promise<DeriveAddressResult>`
+
+Derive a new address without connecting.
+
+```typescript
+const result = await wallet.deriveAddress({
+  keyIndex: 1,
+  curve: "secp256k1", // "secp256k1" | "ed25519"
+  group: "evm", // "evm" | "solana" | "bitcoin"
+});
+// → { address: { address: "0x...", keyIndex: 1, curve: "secp256k1", group: "evm" } }
+
+// For Bitcoin
+const btcResult = await wallet.deriveAddress({
+  keyIndex: 0,
+  curve: "secp256k1",
+  group: "bitcoin",
+  bitcoinAddressType: "p2wpkh", // "p2wpkh" | "p2tr"
+  bitcoinNetwork: "mainnet", // "mainnet" | "testnet4"
 });
 ```
 

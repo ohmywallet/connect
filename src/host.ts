@@ -47,16 +47,44 @@ import type {
 import { IframeError } from "./types";
 import { IframeChannelBase, createMessage } from "./channel";
 
-/** 브라우저 언어를 SupportedLocale로 변환 */
+/** 브라우저 언어를 SupportedLocale로 변환 (15개 언어 지원) */
 function detectLocale(): SupportedLocale {
   if (typeof navigator === "undefined") return "ko";
 
   const browserLang = navigator.language.toLowerCase();
-  if (browserLang.startsWith("en")) return "en";
-  if (browserLang.startsWith("zh")) return "zh";
-  if (browserLang.startsWith("ko")) return "ko";
 
-  return "ko"; // 기본값
+  // 정확한 매칭 우선 (zh-CN, zh-TW 등)
+  const exactMatch: Record<string, SupportedLocale> = {
+    "zh-cn": "zh-CN",
+    "zh-tw": "zh-TW",
+    "zh-hk": "zh-TW", // 홍콩은 번체 사용
+    "zh-sg": "zh-CN", // 싱가포르는 간체 사용
+  };
+
+  if (exactMatch[browserLang]) {
+    return exactMatch[browserLang];
+  }
+
+  // 언어 코드 기반 매칭
+  const langCode = browserLang.split("-")[0];
+  const langMatch: Record<string, SupportedLocale> = {
+    ko: "ko",
+    en: "en",
+    zh: "zh-CN", // 기본 중국어는 간체
+    es: "es",
+    hi: "hi",
+    id: "id",
+    vi: "vi",
+    ru: "ru",
+    pt: "pt",
+    tr: "tr",
+    ja: "ja",
+    fr: "fr",
+    de: "de",
+    ar: "ar",
+  };
+
+  return langMatch[langCode] ?? "ko";
 }
 
 /** IframeHost 상태 */

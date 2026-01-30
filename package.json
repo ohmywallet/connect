@@ -1,6 +1,6 @@
 {
   "name": "@ohmywallet/connect",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "OhMyWallet dApp integration library - Secure PassKey wallet connection via iframe",
   "type": "module",
   "main": "./dist/index.js",
