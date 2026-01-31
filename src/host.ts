@@ -16,8 +16,9 @@
  * const sig = await wallet.signWithPasskey(challenge, { keyId: passkey.passkeys[0].keyId });
  *
  * // Connect with DerivationSigner
- * const derived = await wallet.connectWithSignerType({ signerType: "derivation" });
- * const sig = await wallet.signWithDerivation(txHash, { address: derived.addresses[0].address });
+ * await wallet.connectWithSignerType({ signerType: "derivation" });
+ * const { address } = await wallet.deriveAddress({ keyIndex: 0, group: "evm", curve: "secp256k1" });
+ * const sig = await wallet.signWithDerivation(txHash, { address: address.address });
  * ```
  */
 

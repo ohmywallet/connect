@@ -293,10 +293,6 @@ const btcResult = await wallet.deriveAddress({
 });
 ```
 
-##### `show() / hide()`
-
-지갑 모달을 표시하거나 숨깁니다.
-
 ##### `destroy()`
 
 인스턴스를 정리하고 리소스를 해제합니다.

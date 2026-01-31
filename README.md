@@ -293,10 +293,6 @@ const btcResult = await wallet.deriveAddress({
 });
 ```
 
-##### `show() / hide()`
-
-Show or hide the wallet modal.
-
 ##### `destroy()`
 
 Cleanup instance and release resources.
