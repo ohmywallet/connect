@@ -42,15 +42,6 @@
 // Host (dApp 측)
 export { IframeHost, type IframeHostState, type IframeHostEvents } from "./host";
 
-// HostWalletManager (apps/wallet용)
-export {
-  HostWalletManager,
-  type HostWalletManagerState,
-  type HostWalletManagerConfig,
-  type HostWalletAddressInfo,
-  type HostDeriveAddressOptions,
-} from "./host-wallet-manager";
-
 // =============================================================================
 // SignerType 기반 API 타입
 // =============================================================================

@@ -322,14 +322,21 @@ export class IframeHost extends IframeChannelBase {
   /** 모달 표시 (내부 전용) */
   private show(): void {
     if (this.overlay) {
-      this.overlay.style.display = "flex";
+      this.overlay.style.opacity = "1";
+      this.overlay.style.pointerEvents = "auto";
+
+      // iOS Safari에서 iframe focus 보장
+      if (this.iframe?.contentWindow) {
+        this.iframe.contentWindow.focus();
+      }
     }
   }
 
   /** 모달 숨기기 (내부 전용) */
   private hide(): void {
     if (this.overlay) {
-      this.overlay.style.display = "none";
+      this.overlay.style.opacity = "0";
+      this.overlay.style.pointerEvents = "none";
     }
   }
 
@@ -417,10 +424,13 @@ export class IframeHost extends IframeChannelBase {
       width: 100%;
       height: 100%;
       background: rgba(0, 0, 0, 0.6);
-      display: none;
+      display: flex;
       align-items: center;
       justify-content: center;
       z-index: 99999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
     `;
 
     const iframeContainer = document.createElement("div");

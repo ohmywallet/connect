@@ -13,8 +13,8 @@ importers:
         version: 2.45.1(typescript@5.9.3)
     devDependencies:
       '@types/node':
-        specifier: ^20.11.0
-        version: 20.19.30
+        specifier: ^22.12.0
+        version: 22.19.7
       eslint:
         specifier: ^9.26.0
         version: 9.39.2
@@ -22,7 +22,7 @@ importers:
         specifier: ^8.0.0
         version: 8.5.1(typescript@5.9.3)
       typescript:
-        specifier: ^5.3.0
+        specifier: ^5.9.3
         version: 5.9.3
       typescript-eslint:
         specifier: ^8.32.0
@@ -408,8 +408,8 @@ packages:
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
-  '@types/node@20.19.30':
-    resolution: {integrity: sha512-WJtwWJu7UdlvzEAUm484QNg5eAoq5QR08KDNx7g45Usrs2NtOPiX8ugDqmKdXkyL03rBqU5dYNYVQetEpBHq2g==}
+  '@types/node@22.19.7':
+    resolution: {integrity: sha512-MciR4AKGHWl7xwxkBa6xUGxQJ4VBOmPTF7sL+iGzuahOFaO0jHCsuEfS80pan1ef4gWId1oWOweIhrDEYLuaOw==}
 
   '@typescript-eslint/eslint-plugin@8.54.0':
     resolution: {integrity: sha512-hAAP5io/7csFStuOmR782YmTthKBJ9ND3WVL60hcOjvtGFb+HJxH4O5huAcmcZ9v9G8P+JETiZ/G1B8MALnWZQ==}
@@ -1258,7 +1258,7 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
-  '@types/node@20.19.30':
+  '@types/node@22.19.7':
     dependencies:
       undici-types: 6.21.0
 
