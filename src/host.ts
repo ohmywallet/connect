@@ -1,7 +1,7 @@
 /**
- * IframeHost - dApp 측 지갑 연결
+ * IframeHost - dApp wallet connection
  *
- * SignerType 기반 지갑 연결 및 서명 관리
+ * SignerType-based wallet connection and signing management
  *
  * @example
  * ```typescript
@@ -11,17 +11,18 @@
  *   iframeSrc: "https://vault.ohmywallet.xyz",
  * });
  *
- * // PasskeySigner 연결
+ * // Connect with PasskeySigner
  * const passkey = await wallet.connectWithSignerType({ signerType: "passkey" });
  * const sig = await wallet.signWithPasskey(challenge, { keyId: passkey.passkeys[0].keyId });
  *
- * // DerivationSigner 연결
+ * // Connect with DerivationSigner
  * const derived = await wallet.connectWithSignerType({ signerType: "derivation" });
  * const sig = await wallet.signWithDerivation(txHash, { address: derived.addresses[0].address });
  * ```
  */
 
 import type { Hash } from "viem";
+import { isAddress, isHex } from "viem";
 import type {
   IframeHostConfig,
   IframeMessage,
@@ -47,30 +48,30 @@ import type {
 import { IframeError } from "./types";
 import { IframeChannelBase, createMessage } from "./channel";
 
-/** 브라우저 언어를 SupportedLocale로 변환 (15개 언어 지원) */
+/** Detect browser locale and convert to SupportedLocale (15 languages supported) */
 function detectLocale(): SupportedLocale {
   if (typeof navigator === "undefined") return "ko";
 
   const browserLang = navigator.language.toLowerCase();
 
-  // 정확한 매칭 우선 (zh-CN, zh-TW 등)
+  // Exact match first (zh-CN, zh-TW, etc.)
   const exactMatch: Record<string, SupportedLocale> = {
     "zh-cn": "zh-CN",
     "zh-tw": "zh-TW",
-    "zh-hk": "zh-TW", // 홍콩은 번체 사용
-    "zh-sg": "zh-CN", // 싱가포르는 간체 사용
+    "zh-hk": "zh-TW", // Hong Kong uses Traditional Chinese
+    "zh-sg": "zh-CN", // Singapore uses Simplified Chinese
   };
 
   if (exactMatch[browserLang]) {
     return exactMatch[browserLang];
   }
 
-  // 언어 코드 기반 매칭
+  // Language code based matching
   const langCode = browserLang.split("-")[0];
   const langMatch: Record<string, SupportedLocale> = {
     ko: "ko",
     en: "en",
-    zh: "zh-CN", // 기본 중국어는 간체
+    zh: "zh-CN", // Default Chinese is Simplified
     es: "es",
     hi: "hi",
     id: "id",
@@ -87,10 +88,10 @@ function detectLocale(): SupportedLocale {
   return langMatch[langCode] ?? "ko";
 }
 
-/** IframeHost 상태 */
+/** IframeHost state */
 export type IframeHostState = "idle" | "loading" | "ready" | "error" | "destroyed";
 
-/** IframeHost 이벤트 */
+/** IframeHost events */
 export interface IframeHostEvents {
   error: (error: IframeError) => void;
   destroyed: () => void;
@@ -99,7 +100,7 @@ export interface IframeHostEvents {
 /**
  * IframeHost
  *
- * dApp에서 OhMyWallet iframe을 통해 지갑 기능을 사용합니다.
+ * Provides wallet functionality through OhMyWallet iframe in dApps.
  */
 export class IframeHost extends IframeChannelBase {
   private config: IframeHostConfig;
@@ -118,12 +119,12 @@ export class IframeHost extends IframeChannelBase {
     this.setupHandlers();
   }
 
-  /** 현재 상태 */
+  /** Current state */
   get currentState(): IframeHostState {
     return this.state;
   }
 
-  /** 이벤트 핸들러 등록 */
+  /** Register event handler */
   onEvent<K extends keyof IframeHostEvents>(event: K, handler: IframeHostEvents[K]): void {
     this.eventHandlers[event] = handler;
   }
@@ -133,15 +134,15 @@ export class IframeHost extends IframeChannelBase {
   // ==========================================================================
 
   /**
-   * SignerType 기반 연결
+   * Connect with SignerType
    *
    * @example
    * ```typescript
-   * // PasskeySigner 연결
+   * // Connect with PasskeySigner
    * const result = await wallet.connectWithSignerType({ signerType: "passkey" });
    * // → { signerType: "passkey", passkeys: [...], activePasskey: {...} }
    *
-   * // DerivationSigner 연결
+   * // Connect with DerivationSigner
    * const result = await wallet.connectWithSignerType({ signerType: "derivation" });
    * // → { signerType: "derivation", addresses: [...], activeAddress: {...} }
    * ```
@@ -151,7 +152,7 @@ export class IframeHost extends IframeChannelBase {
   async connectWithSignerType(options: ConnectOptions): Promise<ConnectResult> {
     await this.ensureIframeReady();
 
-    // signerType에 따라 페이로드 구성
+    // Build payload based on signerType
     const payload: ConnectPayload =
       options.signerType === "passkey"
         ? {
@@ -161,7 +162,7 @@ export class IframeHost extends IframeChannelBase {
           }
         : {
             signerType: "derivation",
-            // derivation은 범용 지갑이므로 dApp 정보 없음
+            // derivation is a universal wallet, no dApp info needed
           };
 
     const message = createMessage("CONNECT", payload);
@@ -174,11 +175,11 @@ export class IframeHost extends IframeChannelBase {
   }
 
   /**
-   * PasskeySigner로 서명
+   * Sign with PasskeySigner
    *
-   * @param hash 서명할 해시
-   * @param options keyId를 포함한 서명 옵션
-   * @returns P-256 서명 결과 (r, s, authenticatorData, clientDataJSON)
+   * @param hash Hash to sign
+   * @param options Signing options including keyId
+   * @returns P-256 signature result (r, s, authenticatorData, clientDataJSON)
    *
    * @example
    * ```typescript
@@ -191,7 +192,15 @@ export class IframeHost extends IframeChannelBase {
   async signWithPasskey(hash: Hash, options: PasskeySignOptions): Promise<PasskeySignResult> {
     this.assertReady();
 
-    // WebAuthn은 iframe이 보여야 동작하므로 서명 시 표시
+    // Input validation
+    if (!isHex(hash)) {
+      throw new IframeError("VALIDATION_FAILED", "hash must be in Hex format");
+    }
+    if (!isHex(options.keyId)) {
+      throw new IframeError("VALIDATION_FAILED", "keyId must be in Hex format");
+    }
+
+    // WebAuthn requires iframe to be visible, show during signing
     this.show();
 
     const payload: PasskeySignPayload = {
@@ -215,10 +224,10 @@ export class IframeHost extends IframeChannelBase {
   }
 
   /**
-   * 주소 파생 (DerivationSigner 전용)
+   * Derive address (DerivationSigner only)
    *
-   * @param options 파생 옵션 (keyIndex, curve, group 등)
-   * @returns 파생된 주소 정보
+   * @param options Derivation options (keyIndex, curve, group, etc.)
+   * @returns Derived address information
    *
    * @example
    * ```typescript
@@ -247,20 +256,20 @@ export class IframeHost extends IframeChannelBase {
   }
 
   /**
-   * DerivationSigner로 서명
+   * Sign with DerivationSigner
    *
-   * @param hash 서명할 해시
-   * @param options address 또는 (group + keyIndex)를 포함한 서명 옵션
-   * @returns 체인에 맞는 서명 포맷
+   * @param hash Hash to sign
+   * @param options Signing options including address or (group + keyIndex)
+   * @returns Signature in chain-specific format
    *
    * @example
    * ```typescript
-   * // 방법 1: address로 서명
+   * // Method 1: Sign with address
    * const sig = await wallet.signWithDerivation(txHash, {
    *   address: "0x1234...abcd",
    * });
    *
-   * // 방법 2: group + keyIndex로 서명
+   * // Method 2: Sign with group + keyIndex
    * const sig = await wallet.signWithDerivation(txHash, {
    *   group: "evm",
    *   keyIndex: 0,
@@ -273,18 +282,33 @@ export class IframeHost extends IframeChannelBase {
   ): Promise<DerivationSignResult> {
     this.assertReady();
 
-    // XOR 검증: address 또는 (group + keyIndex) 중 하나만
+    // Input validation: hash
+    if (!isHex(hash)) {
+      throw new IframeError("VALIDATION_FAILED", "hash must be in Hex format");
+    }
+
+    // XOR validation: either address or (group + keyIndex)
     const hasAddress = !!options.address;
     const hasGroupKey = !!(options.group && options.keyIndex !== undefined);
 
     if (hasAddress === hasGroupKey) {
       throw new IframeError(
         "VALIDATION_FAILED",
-        "address 또는 (group + keyIndex) 중 하나만 제공해야 합니다"
+        "Provide either address or (group + keyIndex), not both"
       );
     }
 
-    // requireConfirmation=true일 때는 트랜잭션 확인 모달 표시
+    // Input validation: address format (EVM addresses only)
+    if (options.address && options.address.startsWith("0x") && !isAddress(options.address)) {
+      throw new IframeError("VALIDATION_FAILED", "Invalid EVM address format");
+    }
+
+    // Input validation: keyIndex range
+    if (options.keyIndex !== undefined && (options.keyIndex < 0 || options.keyIndex > 2147483647)) {
+      throw new IframeError("VALIDATION_FAILED", "keyIndex must be between 0 and 2147483647");
+    }
+
+    // Show transaction confirmation modal when requireConfirmation=true
     if (options.requireConfirmation) {
       this.show();
     }
@@ -319,20 +343,20 @@ export class IframeHost extends IframeChannelBase {
   // Private: UI 제어
   // ==========================================================================
 
-  /** 모달 표시 (내부 전용) */
+  /** Show modal (internal use only) */
   private show(): void {
     if (this.overlay) {
       this.overlay.style.opacity = "1";
       this.overlay.style.pointerEvents = "auto";
 
-      // iOS Safari에서 iframe focus 보장
+      // Ensure iframe focus on iOS Safari
       if (this.iframe?.contentWindow) {
         this.iframe.contentWindow.focus();
       }
     }
   }
 
-  /** 모달 숨기기 (내부 전용) */
+  /** Hide modal (internal use only) */
   private hide(): void {
     if (this.overlay) {
       this.overlay.style.opacity = "0";
@@ -340,16 +364,16 @@ export class IframeHost extends IframeChannelBase {
     }
   }
 
-  /** iframe 종료 */
+  /** Destroy iframe */
   override destroy(): void {
     if (this.destroyed) return;
 
     if (this.state === "ready" && this.iframe?.contentWindow) {
       try {
-        const message = createMessage("DESTROY", { reason: "호스트 종료" });
+        const message = createMessage("DESTROY", { reason: "Host destroyed" });
         this.postToIframe(message);
       } catch {
-        // 무시
+        // Ignore
       }
     }
 
@@ -373,7 +397,7 @@ export class IframeHost extends IframeChannelBase {
   // ==========================================================================
 
   private setupHandlers(): void {
-    // READY 핸들러 - iframe 워커가 준비되면 호출
+    // READY handler - called when iframe worker is ready
     this.on("READY", () => {
       if (this.readyResolver) {
         this.readyResolver();
@@ -381,18 +405,18 @@ export class IframeHost extends IframeChannelBase {
       }
     });
 
-    // 새 API 응답 핸들러
+    // New API response handlers
     this.on("CONNECT_RESULT", (message) => {
       const payload = message.payload as { requestId: string; data: ConnectResult };
       this.requestManager.resolve(payload.requestId, payload.data);
-      // 연결 완료 후 overlay 숨김
+      // Hide overlay after connection completes
       this.hide();
     });
 
-    // 온보딩 필요 - overlay 표시
+    // Needs onboarding - show overlay
     this.on("NEEDS_ONBOARDING", () => {
-      // 온보딩 UI를 표시하기 위해 overlay를 보여줌
-      // CONNECT_RESULT가 올 때까지 대기 (Promise는 아직 pending)
+      // Show overlay to display onboarding UI
+      // Wait until CONNECT_RESULT arrives (Promise is still pending)
       this.show();
     });
 
@@ -404,7 +428,7 @@ export class IframeHost extends IframeChannelBase {
       this.requestManager.resolve(payload.requestId, payload.data);
     });
 
-    // DERIVE_ADDRESS_RESULT 핸들러 추가
+    // Add DERIVE_ADDRESS_RESULT handler
     this.on("DERIVE_ADDRESS_RESULT", (message) => {
       const payload = message.payload as {
         requestId: string;
@@ -448,15 +472,15 @@ export class IframeHost extends IframeChannelBase {
 
     const iframe = document.createElement("iframe");
 
-    // locale을 URL 경로에 포함하고, origin 파라미터 추가
+    // Include locale in URL path and add origin parameter
     const locale = this.config.locale ?? detectLocale();
-    const baseUrl = this.config.iframeSrc.replace(/\/$/, ""); // 끝의 / 제거
+    const baseUrl = this.config.iframeSrc.replace(/\/$/, ""); // Remove trailing slash
     const dappOrigin = this.config.origin ?? window.location.origin;
     const params = new URLSearchParams();
     params.set("origin", dappOrigin);
     iframe.src = `${baseUrl}/${locale}?${params.toString()}`;
 
-    // referrerpolicy 설정 - iOS Safari에서 referrer 전달 보장
+    // Set referrerpolicy - ensure referrer is sent on iOS Safari
     iframe.referrerPolicy = "origin";
 
     iframe.style.cssText = `
@@ -465,16 +489,16 @@ export class IframeHost extends IframeChannelBase {
       border: none;
     `;
 
-    // WebAuthn 권한 위임
+    // Delegate WebAuthn permissions
     iframe.allow = "publickey-credentials-get *; publickey-credentials-create *";
 
-    // sandbox 적용 (allow-popups: 로컬 개발 환경에서 필요)
+    // Apply sandbox (allow-popups: needed for local dev environment)
     const sandboxValue =
       this.config.sandbox ?? "allow-scripts allow-forms allow-same-origin allow-popups";
     iframe.setAttribute("sandbox", sandboxValue);
 
-    // 닫기 버튼 제거 (트랜잭션 모달에 이미 닫기 버튼이 있어 중복 방지)
-    // 필요시 ESC 키나 모달 내부 버튼으로 닫기 가능
+    // Close button removed (transaction modal already has a close button to avoid duplication)
+    // Can be closed with ESC key or modal's internal button if needed
 
     iframeContainer.appendChild(iframe);
     overlay.appendChild(iframeContainer);
@@ -488,12 +512,12 @@ export class IframeHost extends IframeChannelBase {
   private waitForIframeLoad(): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.iframe) {
-        reject(new IframeError("NOT_INITIALIZED", "iframe이 생성되지 않았습니다"));
+        reject(new IframeError("NOT_INITIALIZED", "iframe not created"));
         return;
       }
 
       const timeout = setTimeout(() => {
-        reject(new IframeError("TIMEOUT", "iframe 로드 타임아웃"));
+        reject(new IframeError("TIMEOUT", "iframe load timeout"));
       }, 10000);
 
       this.iframe.onload = () => {
@@ -503,17 +527,17 @@ export class IframeHost extends IframeChannelBase {
 
       this.iframe.onerror = () => {
         clearTimeout(timeout);
-        reject(new IframeError("SIGN_FAILED", "iframe 로드 실패"));
+        reject(new IframeError("SIGN_FAILED", "iframe load failed"));
       };
     });
   }
 
-  /** IframeWorker가 READY 메시지를 보낼 때까지 대기 */
+  /** Wait for IframeWorker to send READY message */
   private waitForWorkerReady(): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.readyResolver = null;
-        reject(new IframeError("TIMEOUT", "IframeWorker 준비 타임아웃"));
+        reject(new IframeError("TIMEOUT", "IframeWorker ready timeout"));
       }, 10000);
 
       this.readyResolver = () => {
@@ -525,7 +549,7 @@ export class IframeHost extends IframeChannelBase {
 
   private postToIframe(message: IframeMessage): void {
     if (!this.iframe?.contentWindow) {
-      throw new IframeError("NOT_INITIALIZED", "iframe이 초기화되지 않았습니다");
+      throw new IframeError("NOT_INITIALIZED", "iframe not initialized");
     }
 
     this.iframe.contentWindow.postMessage(message, this.iframeOrigin);
@@ -533,20 +557,14 @@ export class IframeHost extends IframeChannelBase {
 
   private assertReady(): void {
     if (this.state !== "ready") {
-      throw new IframeError(
-        "NOT_INITIALIZED",
-        `IframeHost가 준비되지 않았습니다 (상태: ${this.state})`
-      );
+      throw new IframeError("NOT_INITIALIZED", `IframeHost is not ready (state: ${this.state})`);
     }
   }
 
-  /** iframe이 준비되었는지 확인하고 필요시 생성 */
+  /** Ensure iframe is ready, create if needed */
   private async ensureIframeReady(): Promise<void> {
     if (this.state !== "loading" && this.state !== "idle" && this.state !== "ready") {
-      throw new IframeError(
-        "NOT_INITIALIZED",
-        `IframeHost가 준비되지 않았습니다 (상태: ${this.state})`
-      );
+      throw new IframeError("NOT_INITIALIZED", `IframeHost is not ready (state: ${this.state})`);
     }
 
     if (!this.iframe) {

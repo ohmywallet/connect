@@ -1,7 +1,7 @@
 /**
- * iframe 통신 채널
+ * iframe communication channel
  *
- * postMessage 기반 안전한 통신 레이어
+ * Secure communication layer based on postMessage
  */
 
 import type { IframeMessage, IframeMessageType, IframeErrorCode } from "./types";
@@ -13,12 +13,12 @@ import { IframeError } from "./types";
 
 let messageIdCounter = 0;
 
-/** 고유 메시지 ID 생성 */
+/** Generate unique message ID */
 export function generateMessageId(): string {
   return `msg_${Date.now()}_${++messageIdCounter}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** 메시지 생성 */
+/** Create message */
 export function createMessage<T extends IframeMessageType, P>(
   type: T,
   payload: P,
@@ -36,7 +36,7 @@ export function createMessage<T extends IframeMessageType, P>(
 // 메시지 검증
 // =============================================================================
 
-/** 메시지 유효성 검사 */
+/** Validate message */
 export function isValidMessage(data: unknown): data is IframeMessage {
   if (!data || typeof data !== "object") return false;
 
@@ -49,15 +49,24 @@ export function isValidMessage(data: unknown): data is IframeMessage {
   );
 }
 
-/** origin 검증 */
+/** Validate origin */
 export function isValidOrigin(origin: string, allowedOrigin: string): boolean {
-  // 개발 환경 허용
-  if (allowedOrigin === "*") return true;
+  // ⚠️ SECURITY WARNING: Use "*" only in development environments
+  // Never use in production (allows all origins)
+  if (allowedOrigin === "*") {
+    // Allow only in development mode
+    if (typeof process !== "undefined" && process.env?.NODE_ENV === "production") {
+      console.error("🚨 SECURITY: allowedOrigin='*' cannot be used in production");
+      return false;
+    }
+    console.warn("⚠️ Security warning: All origins allowed (development mode only)");
+    return true;
+  }
 
-  // 정확한 매칭
+  // Exact match
   if (origin === allowedOrigin) return true;
 
-  // localhost 변형 허용 (개발용)
+  // Allow localhost variants (for development)
   if (allowedOrigin === "localhost") {
     return (
       origin === "http://localhost:3000" ||
@@ -82,9 +91,9 @@ interface PendingRequest<T = unknown> {
 }
 
 /**
- * 요청-응답 관리자
+ * Request-response manager
  *
- * postMessage의 비동기 요청-응답 패턴 관리
+ * Manages async request-response pattern for postMessage
  */
 export class RequestManager {
   private pending = new Map<string, PendingRequest>();
@@ -94,12 +103,12 @@ export class RequestManager {
     this.defaultTimeout = defaultTimeout;
   }
 
-  /** 요청 등록 */
+  /** Register request */
   register<T>(messageId: string, timeout?: number): Promise<T> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.pending.delete(messageId);
-        reject(new IframeError("TIMEOUT", `요청 타임아웃: ${messageId}`));
+        reject(new IframeError("TIMEOUT", `Request timeout: ${messageId}`));
       }, timeout ?? this.defaultTimeout);
 
       this.pending.set(messageId, {
@@ -111,7 +120,7 @@ export class RequestManager {
     });
   }
 
-  /** 응답 처리 */
+  /** Handle response */
   resolve<T>(messageId: string, data: T): boolean {
     const request = this.pending.get(messageId);
     if (!request) return false;
@@ -122,7 +131,7 @@ export class RequestManager {
     return true;
   }
 
-  /** 에러 처리 */
+  /** Handle error */
   reject(messageId: string, error: Error): boolean {
     const request = this.pending.get(messageId);
     if (!request) return false;
@@ -133,7 +142,7 @@ export class RequestManager {
     return true;
   }
 
-  /** 모든 대기 중인 요청 취소 */
+  /** Cancel all pending requests */
   cancelAll(reason: string): void {
     const error = new IframeError("DESTROYED", reason);
     this.pending.forEach((request) => {
@@ -143,14 +152,14 @@ export class RequestManager {
     this.pending.clear();
   }
 
-  /** 대기 중인 요청 수 */
+  /** Number of pending requests */
   get pendingCount(): number {
     return this.pending.size;
   }
 
-  /** 정리 */
+  /** Cleanup */
   destroy(): void {
-    this.cancelAll("채널이 종료되었습니다");
+    this.cancelAll("Channel destroyed");
   }
 }
 
@@ -172,9 +181,9 @@ export type MessageHandlerMap = Partial<{
 // =============================================================================
 
 /**
- * iframe 통신 채널 베이스
+ * iframe communication channel base
  *
- * 부모와 iframe 모두 사용하는 공통 기능
+ * Common functionality used by both parent and iframe
  */
 export abstract class IframeChannelBase {
   protected handlers: MessageHandlerMap = {};
@@ -189,22 +198,22 @@ export abstract class IframeChannelBase {
     this.requestManager = new RequestManager(timeout);
   }
 
-  /** 메시지 소스 윈도우 제한 */
+  /** Restrict message source window */
   protected setAllowedSourceWindow(source: Window | null): void {
     this.allowedSource = source;
   }
 
-  /** 메시지 핸들러 등록 */
+  /** Register message handler */
   on<T extends IframeMessageType>(type: T, handler: MessageHandler<T>): void {
     this.handlers[type] = handler as MessageHandler;
   }
 
-  /** 메시지 핸들러 제거 */
+  /** Remove message handler */
   off(type: IframeMessageType): void {
     delete this.handlers[type];
   }
 
-  /** 메시지 리스너 시작 */
+  /** Start message listener */
   protected startListening(): void {
     if (this.messageListener) return;
 
@@ -215,7 +224,7 @@ export abstract class IframeChannelBase {
     window.addEventListener("message", this.messageListener);
   }
 
-  /** 메시지 리스너 중지 */
+  /** Stop message listener */
   protected stopListening(): void {
     if (this.messageListener) {
       window.removeEventListener("message", this.messageListener);
@@ -223,31 +232,31 @@ export abstract class IframeChannelBase {
     }
   }
 
-  /** 메시지 처리 */
+  /** Handle message */
   protected handleMessage(event: MessageEvent): void {
-    // 자기 자신의 origin에서 오는 메시지는 무시
+    // Ignore messages from own origin
     if (event.origin === window.location.origin) {
       return;
     }
 
-    // source 윈도우 검증 (가능한 경우)
+    // Validate source window (when possible)
     if (this.allowedSource && event.source !== this.allowedSource) {
       return;
     }
 
-    // origin 검증
+    // Validate origin
     if (!isValidOrigin(event.origin, this.allowedOrigin)) {
       return;
     }
 
-    // 메시지 유효성 검사
+    // Validate message
     if (!isValidMessage(event.data)) {
       return;
     }
 
     const message = event.data as IframeMessage;
 
-    // ERROR 메시지 처리
+    // Handle ERROR message
     if (message.type === "ERROR") {
       const payload = message.payload as { requestId?: string; code: string; message: string };
       if (payload.requestId) {
@@ -259,18 +268,18 @@ export abstract class IframeChannelBase {
       return;
     }
 
-    // 등록된 핸들러 호출
+    // Call registered handler
     const handler = this.handlers[message.type] as MessageHandler | undefined;
     if (handler) {
       try {
         handler(message as IframeMessage, event.origin);
       } catch {
-        // 핸들러 에러 무시
+        // Ignore handler errors
       }
     }
   }
 
-  /** 채널 종료 */
+  /** Destroy channel */
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
@@ -279,7 +288,7 @@ export abstract class IframeChannelBase {
     this.handlers = {};
   }
 
-  /** 종료 여부 */
+  /** Check if destroyed */
   get isDestroyed(): boolean {
     return this.destroyed;
   }
