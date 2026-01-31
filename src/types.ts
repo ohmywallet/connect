@@ -65,6 +65,7 @@ export type IframeMessageType =
   | "SIGN_WITH_PASSKEY" // PasskeySigner 서명
   | "SIGN_WITH_DERIVATION" // DerivationSigner 서명
   | "DERIVE_ADDRESS" // 주소 파생 요청
+  | "EXPORT_PRIVATE_KEY_REQUEST" // 개인키 내보내기 요청
   | "DESTROY" // 세션 종료
   // iframe → 부모
   | "READY" // iframe 준비 완료
@@ -72,6 +73,7 @@ export type IframeMessageType =
   | "NEEDS_ONBOARDING" // 온보딩 필요 (지갑 없음)
   | "SIGN_RESULT" // 서명 결과
   | "DERIVE_ADDRESS_RESULT" // 주소 파생 결과
+  | "EXPORT_PRIVATE_KEY_RESULT" // 개인키 내보내기 결과
   | "ERROR"; // 에러 응답
 
 /** 기본 메시지 구조 */
@@ -299,6 +301,44 @@ export interface DerivationSignPayload {
   transactionInfo?: TransactionInfo;
 }
 
+// -----------------------------------------------------------------------------
+// Export Private Key Types
+// -----------------------------------------------------------------------------
+
+/**
+ * 개인키 내보내기 요청 페이로드
+ *
+ * ⚠️ 보안 경고: 개인키는 iframe 내부에서만 처리됩니다.
+ * 부모 앱은 복사 완료 여부만 수신합니다.
+ */
+export interface ExportPrivateKeyPayload {
+  /** 체인 그룹 (evm, solana, bitcoin, sui) */
+  group: DerivationGroup;
+  /** 키 인덱스 */
+  keyIndex: number;
+  /** 주소 (표시용) */
+  address: string;
+  /** Bitcoin 주소 타입 (bitcoin 그룹 전용) */
+  bitcoinAddressType?: BitcoinAddressType;
+  /** Bitcoin 네트워크 (bitcoin 그룹 전용) */
+  bitcoinNetwork?: BitcoinNetwork;
+}
+
+/**
+ * 개인키 내보내기 결과
+ *
+ * ⚠️ 보안: 개인키 자체는 절대 포함하지 않습니다.
+ * 복사 완료 여부만 반환합니다.
+ */
+export interface ExportPrivateKeyResult {
+  /** 성공 여부 */
+  success: boolean;
+  /** 에러 메시지 (실패 시) */
+  error?: string;
+  /** 클립보드에 복사 완료 여부 */
+  copied?: boolean;
+}
+
 // =============================================================================
 // 에러 타입
 // =============================================================================
@@ -404,7 +444,8 @@ export function isPasskeyResult(result: ConnectResult): result is PasskeyConnect
  *
  * if (isDerivationResult(result)) {
  *   // TypeScript가 result를 DerivationConnectResult로 인식
- *   console.log(result.addresses);
+ *   // 주소는 deriveAddress()로 별도 조회
+ *   const { address } = await wallet.deriveAddress({ keyIndex: 0, group: "evm", curve: "secp256k1" });
  * }
  * ```
  */

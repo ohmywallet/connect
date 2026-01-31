@@ -236,25 +236,35 @@ export abstract class IframeChannelBase {
   protected handleMessage(event: MessageEvent): void {
     // Ignore messages from own origin
     if (event.origin === window.location.origin) {
+      console.log("[IframeChannelBase] 자신의 origin에서 온 메시지 무시", event.origin);
       return;
     }
 
     // Validate source window (when possible)
     if (this.allowedSource && event.source !== this.allowedSource) {
+      console.log("[IframeChannelBase] 허용되지 않은 source window", event.source);
       return;
     }
 
     // Validate origin
     if (!isValidOrigin(event.origin, this.allowedOrigin)) {
+      console.log(
+        "[IframeChannelBase] 허용되지 않은 origin",
+        event.origin,
+        "allowed:",
+        this.allowedOrigin
+      );
       return;
     }
 
     // Validate message
     if (!isValidMessage(event.data)) {
+      console.log("[IframeChannelBase] 유효하지 않은 메시지 형식", event.data);
       return;
     }
 
     const message = event.data as IframeMessage;
+    console.log("[IframeChannelBase] 메시지 수신", message.type, message);
 
     // Handle ERROR message
     if (message.type === "ERROR") {

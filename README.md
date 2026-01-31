@@ -173,23 +173,24 @@ const wallet = new IframeHost({
   iframeSrc: "https://vault.ohmywallet.xyz",
 });
 
-// 2. Connect with Derivation
-const result = await wallet.connectWithSignerType({
+// 2. Connect with Derivation (connection only, no address info)
+await wallet.connectWithSignerType({
   signerType: "derivation", // Explicit choice
-  dappName: "My Awesome dApp",
-  dappIcon: "https://my-dapp.com/icon.png",
 });
 
-// 3. Sign with active address (secp256k1, ed25519, etc.)
-if (!result.activeAddress) {
-  throw new Error("No active address");
-}
+// 3. Derive address (required step after connect)
+const { address: primaryAddress } = await wallet.deriveAddress({
+  keyIndex: 0,
+  group: "evm",
+  curve: "secp256k1",
+});
 
+// 4. Sign with derived address
 const sig = await wallet.signWithDerivation("0x1234...abcd", {
-  address: result.activeAddress.address, // Use active address
+  address: primaryAddress.address,
 });
 
-// 4. Cleanup
+// 5. Cleanup
 wallet.destroy();
 ```
 
@@ -248,8 +249,16 @@ Signature using a derived key (secp256k1/ed25519).
 **Option 1: By address** (recommended)
 
 ```typescript
+// First, derive the address
+const { address } = await wallet.deriveAddress({
+  keyIndex: 0,
+  group: "evm",
+  curve: "secp256k1",
+});
+
+// Then sign with the derived address
 const sig = await wallet.signWithDerivation("0x1234...abcd", {
-  address: derivation.addresses[0].address,
+  address: address.address,
 });
 ```
 
@@ -332,11 +341,19 @@ function useOhMyWallet() {
     if (!walletRef.current) return;
     setIsConnecting(true);
     try {
-      const result = await walletRef.current.connectWithSignerType({
+      // 1. Connect (connection only)
+      await walletRef.current.connectWithSignerType({
         signerType: "derivation",
-        dappName: "My React dApp",
       });
-      setAddress(result.activeAddress?.address ?? null);
+
+      // 2. Derive address (required step)
+      const { address: derived } = await walletRef.current.deriveAddress({
+        keyIndex: 0,
+        group: "evm",
+        curve: "secp256k1",
+      });
+
+      setAddress(derived.address as Address);
     } finally {
       setIsConnecting(false);
     }
@@ -395,11 +412,19 @@ async function connect() {
   if (!wallet.value) return;
   isConnecting.value = true;
   try {
-    const result = await wallet.value.connectWithSignerType({
+    // 1. Connect (connection only)
+    await wallet.value.connectWithSignerType({
       signerType: "derivation",
-      dappName: "My Vue dApp",
     });
-    address.value = result.activeAddress?.address ?? null;
+
+    // 2. Derive address (required step)
+    const { address: derived } = await wallet.value.deriveAddress({
+      keyIndex: 0,
+      group: "evm",
+      curve: "secp256k1",
+    });
+
+    address.value = derived.address;
   } finally {
     isConnecting.value = false;
   }
@@ -424,12 +449,19 @@ async function connect() {
   });
 
   document.getElementById("connect-btn").onclick = async () => {
-    const result = await wallet.connectWithSignerType({
+    // 1. Connect (connection only)
+    await wallet.connectWithSignerType({
       signerType: "derivation",
-      dappName: "My dApp",
     });
-    const address = result.activeAddress?.address;
-    document.getElementById("address").textContent = address ?? "-";
+
+    // 2. Derive address (required step)
+    const { address: derived } = await wallet.deriveAddress({
+      keyIndex: 0,
+      group: "evm",
+      curve: "secp256k1",
+    });
+
+    document.getElementById("address").textContent = derived.address;
   };
 
   document.getElementById("sign-btn").onclick = async () => {
@@ -542,12 +574,18 @@ const wallet = new IframeHost({
   iframeSrc: "https://vault.ohmywallet.xyz",
 });
 
-const result = await wallet.connectWithSignerType({
+await wallet.connectWithSignerType({
   signerType: "derivation",
-  dappName: "My ZKsync dApp",
 });
 
-const userAddress = result.addresses[0].address;
+// Derive address (required step after connect)
+const { address: derivedAddress } = await wallet.deriveAddress({
+  keyIndex: 0,
+  group: "evm",
+  curve: "secp256k1",
+});
+
+const userAddress = derivedAddress.address;
 
 // 2. Setup provider and contract
 const provider = new Provider("https://sepolia.era.zksync.dev");
@@ -717,8 +755,8 @@ if (isPasskeyResult(result)) {
 
 if (isDerivationResult(result)) {
   // TypeScript knows result is DerivationConnectResult
-  console.log(result.addresses);
-  console.log(result.activeAddress?.address);
+  // Note: addresses are obtained via deriveAddress(), not from connect result
+  console.log(result.signerType); // "derivation"
 }
 
 // Sign result

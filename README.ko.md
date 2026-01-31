@@ -173,23 +173,24 @@ const wallet = new IframeHost({
   iframeSrc: "https://vault.ohmywallet.xyz",
 });
 
-// 2. Derivation으로 연결
-const result = await wallet.connectWithSignerType({
+// 2. Derivation으로 연결 (연결만, 주소 정보 없음)
+await wallet.connectWithSignerType({
   signerType: "derivation", // 명시적 선택
-  dappName: "My Awesome dApp",
-  dappIcon: "https://my-dapp.com/icon.png",
 });
 
-// 3. 활성 주소로 서명 (secp256k1, ed25519 등)
-if (!result.activeAddress) {
-  throw new Error("활성 주소가 없습니다");
-}
+// 3. 주소 파생 (연결 후 필수 단계)
+const { address: primaryAddress } = await wallet.deriveAddress({
+  keyIndex: 0,
+  group: "evm",
+  curve: "secp256k1",
+});
 
+// 4. 파생된 주소로 서명
 const sig = await wallet.signWithDerivation("0x1234...abcd", {
-  address: result.activeAddress.address, // 활성 주소 사용
+  address: primaryAddress.address,
 });
 
-// 4. 정리
+// 5. 정리
 wallet.destroy();
 ```
 
@@ -248,8 +249,16 @@ const sig = await wallet.signWithPasskey("0x1234...abcd", {
 **방법 1: address로 서명** (권장)
 
 ```typescript
+// 먼저 주소 파생
+const { address } = await wallet.deriveAddress({
+  keyIndex: 0,
+  group: "evm",
+  curve: "secp256k1",
+});
+
+// 파생된 주소로 서명
 const sig = await wallet.signWithDerivation("0x1234...abcd", {
-  address: derivation.addresses[0].address,
+  address: address.address,
 });
 ```
 
@@ -332,11 +341,19 @@ function useOhMyWallet() {
     if (!walletRef.current) return;
     setIsConnecting(true);
     try {
-      const result = await walletRef.current.connectWithSignerType({
+      // 1. 연결 (연결만)
+      await walletRef.current.connectWithSignerType({
         signerType: "derivation",
-        dappName: "My React dApp",
       });
-      setAddress(result.activeAddress?.address ?? null);
+
+      // 2. 주소 파생 (필수 단계)
+      const { address: derived } = await walletRef.current.deriveAddress({
+        keyIndex: 0,
+        group: "evm",
+        curve: "secp256k1",
+      });
+
+      setAddress(derived.address as Address);
     } finally {
       setIsConnecting(false);
     }
@@ -395,11 +412,19 @@ async function connect() {
   if (!wallet.value) return;
   isConnecting.value = true;
   try {
-    const result = await wallet.value.connectWithSignerType({
+    // 1. 연결 (연결만)
+    await wallet.value.connectWithSignerType({
       signerType: "derivation",
-      dappName: "My Vue dApp",
     });
-    address.value = result.activeAddress?.address ?? null;
+
+    // 2. 주소 파생 (필수 단계)
+    const { address: derived } = await wallet.value.deriveAddress({
+      keyIndex: 0,
+      group: "evm",
+      curve: "secp256k1",
+    });
+
+    address.value = derived.address;
   } finally {
     isConnecting.value = false;
   }
@@ -424,12 +449,19 @@ async function connect() {
   });
 
   document.getElementById("connect-btn").onclick = async () => {
-    const result = await wallet.connectWithSignerType({
+    // 1. 연결 (연결만)
+    await wallet.connectWithSignerType({
       signerType: "derivation",
-      dappName: "My dApp",
     });
-    const address = result.activeAddress?.address;
-    document.getElementById("address").textContent = address ?? "-";
+
+    // 2. 주소 파생 (필수 단계)
+    const { address: derived } = await wallet.deriveAddress({
+      keyIndex: 0,
+      group: "evm",
+      curve: "secp256k1",
+    });
+
+    document.getElementById("address").textContent = derived.address;
   };
 
   document.getElementById("sign-btn").onclick = async () => {
@@ -563,8 +595,8 @@ if (isPasskeyResult(result)) {
 
 if (isDerivationResult(result)) {
   // TypeScript가 result를 DerivationConnectResult로 인식
-  console.log(result.addresses);
-  console.log(result.activeAddress?.address);
+  // 참고: 주소는 connect 결과가 아닌 deriveAddress()로 얻습니다
+  console.log(result.signerType); // "derivation"
 }
 
 // 서명 결과

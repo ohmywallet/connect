@@ -110,6 +110,7 @@ export class IframeHost extends IframeChannelBase {
   private state: IframeHostState = "idle";
   private eventHandlers: Partial<IframeHostEvents> = {};
   private readyResolver: (() => void) | null = null;
+  private pendingSignerType: "passkey" | "derivation" | null = null;
 
   constructor(config: IframeHostConfig) {
     const origin = new URL(config.iframeSrc).origin;
@@ -142,14 +143,19 @@ export class IframeHost extends IframeChannelBase {
    * const result = await wallet.connectWithSignerType({ signerType: "passkey" });
    * // → { signerType: "passkey", passkeys: [...], activePasskey: {...} }
    *
-   * // Connect with DerivationSigner
-   * const result = await wallet.connectWithSignerType({ signerType: "derivation" });
-   * // → { signerType: "derivation", addresses: [...], activeAddress: {...} }
+   * // Connect with DerivationSigner (connection only, use deriveAddress() for addresses)
+   * await wallet.connectWithSignerType({ signerType: "derivation" });
+   * // → { signerType: "derivation" }
+   *
+   * // Then derive addresses
+   * const { address } = await wallet.deriveAddress({ keyIndex: 0, group: "evm", curve: "secp256k1" });
    * ```
    */
   async connectWithSignerType(options: PasskeyConnectOptions): Promise<PasskeyConnectResult>;
   async connectWithSignerType(options: DerivationConnectOptions): Promise<DerivationConnectResult>;
   async connectWithSignerType(options: ConnectOptions): Promise<ConnectResult> {
+    // Store signerType before iframe creation
+    this.pendingSignerType = options.signerType;
     await this.ensureIframeReady();
 
     // Build payload based on signerType
@@ -407,7 +413,9 @@ export class IframeHost extends IframeChannelBase {
 
     // New API response handlers
     this.on("CONNECT_RESULT", (message) => {
+      console.log("[IframeHost] CONNECT_RESULT 수신", message);
       const payload = message.payload as { requestId: string; data: ConnectResult };
+      console.log("[IframeHost] requestManager.resolve 호출", payload.requestId);
       this.requestManager.resolve(payload.requestId, payload.data);
       // Hide overlay after connection completes
       this.hide();
@@ -478,6 +486,10 @@ export class IframeHost extends IframeChannelBase {
     const dappOrigin = this.config.origin ?? window.location.origin;
     const params = new URLSearchParams();
     params.set("origin", dappOrigin);
+    // Add signerType if available (for fullscreen mode)
+    if (this.pendingSignerType) {
+      params.set("signerType", this.pendingSignerType);
+    }
     iframe.src = `${baseUrl}/${locale}?${params.toString()}`;
 
     // Set referrerpolicy - ensure referrer is sent on iOS Safari
@@ -490,7 +502,8 @@ export class IframeHost extends IframeChannelBase {
     `;
 
     // Delegate WebAuthn permissions
-    iframe.allow = "publickey-credentials-get *; publickey-credentials-create *";
+    // WebAuthn 권한 + 카메라 권한 (QR 스캔용)
+    iframe.allow = "publickey-credentials-get *; publickey-credentials-create *; camera *";
 
     // Apply sandbox (allow-popups: needed for local dev environment)
     const sandboxValue =
