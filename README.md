@@ -1,23 +1,81 @@
-# @ohmywallet/connect — public source snapshot
+# @ohmywallet/connect
 
-[한국어](./README.ko.md) · [Current SDK package](https://www.npmjs.com/package/@ohmywallet/connect) · [Product documentation](https://www.ohmywallet.xyz/en/#developers)
+Connect OhMyWallet to your dApp with an EIP-1193 Provider or a wagmi connector.
+The SDK uses the Embed iframe for EVM account connection and opens the independent Vault window for passkey authentication and signing. The standalone OhMyWallet App is not required.
 
-This repository currently contains the **0.6.2 source snapshot**. It may not match the latest published npm package or deployed App, Embed and Vault. Do not treat this snapshot as the complete product source or as an independent security audit. Check the version of the package you install.
+Flow: **dApp → Connect → Embed iframe → Vault window**. Public account metadata and the connection grant live only in the Embed session; reload or disconnect requires reconnection. No App login or shared browser storage is required. Private keys and PRF secrets stay inside Vault.
 
-## Current product architecture
+[한국어](./README.ko.md) · [Demo](https://demo.ohmywallet.xyz/connect) · [Public Connect snapshot](https://github.com/ohmywallet/connect)
 
-For the current Connect product, the flow is dApp → Connect → Embed iframe → separate Vault window. The standalone App is not required for embedded EVM wallet connections. This describes current services, not a compatibility guarantee for the old snapshot here.
+## Install
 
-The current PRF wallet obtains secret output from WebAuthn PRF and derives signing keys in Vault JavaScript. Passkey authentication does **not** mean the derived wallet keys remain in a hardware security chip. Keys exist in browser memory during signing. Isolation, CSP and fresh authentication reduce some risks; malicious Vault code, compromised deployment/domain authority or an infected browser/device remain risks.
+```sh
+npm install @ohmywallet/connect
+```
 
-Recovery requires the same passkey and a PRF-compatible browser/provider. Cloud sync alone does not guarantee recovery across all devices. The product does not claim hardware-wallet-equivalent protection or a published independent audit.
+ESM with TypeScript types. Your service origin must be registered with OhMyWallet before embedding. [Contact](mailto:hello@ohmywallet.xyz) for registration.
 
-See the [current security and recovery guide](https://www.ohmywallet.xyz/en/security/) and [machine-readable security model](https://www.ohmywallet.xyz/security-model.json) for current routes, supported operations and limits.
+## Connect
 
-## Security reports
+Create one Provider in your browser/client lifecycle. Request connection from your connect button.
 
-Please follow [SECURITY.md](./SECURITY.md). Report privately to support@ohmywallet.xyz. Never post private keys, passkey secrets or authentication tokens in an issue.
+```ts
+import { createProvider } from "@ohmywallet/connect";
 
-## Publishing
+const provider = createProvider({ chainId: 1 });
 
-The legacy npm publish workflow in this snapshot is disabled. This repository must not independently publish stale source over a newer package. Publication requires the product’s separately verified release process; README updates do not publish an npm package.
+const [account] = (await provider.request({
+  method: "eth_requestAccounts",
+})) as string[];
+
+// On logout:
+provider.disconnect();
+
+// When the owning view unmounts:
+provider.destroy();
+```
+
+The Provider works with viem’s `custom(provider)` transport. It supports EVM account access, SIWE login messages, EIP-712 typed data, transaction submission and network switching. Users review and approve requests in a separate wallet window.
+
+Supported networks: Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain, Avalanche and Sepolia.
+
+## wagmi
+
+Optional entry point for `@wagmi/core` 3. Install `@wagmi/core` and `viem` alongside the SDK.
+
+```ts
+import { connect, createConfig, disconnect } from "@wagmi/core";
+import { ohmywallet } from "@ohmywallet/connect/wagmi";
+import { http } from "viem";
+import { mainnet } from "viem/chains";
+
+const config = createConfig({
+  chains: [mainnet],
+  connectors: [ohmywallet()],
+  transports: { [mainnet.id]: http() },
+});
+
+// Connect button:
+await connect(config, { connector: config.connectors[0] });
+
+// On logout:
+await disconnect(config);
+```
+
+## Integration essentials
+
+- Allow `https://embed.ohmywallet.xyz` in your CSP `frame-src`, and allow the wallet approval popup.
+- Handle request rejections in your UI. Code `4001` means the user declined or cancelled; do not automatically retry a transaction submission.
+- Listen for `accountsChanged` and `chainChanged`. A page reload requires reconnection; `disconnect()` clears this Provider session.
+- Your app owns balances, transaction status and login sessions. Verify SIWE challenges and consume nonces in your authentication service.
+- Connect currently supports EVM accounts. It does not provide the full wallet dashboard, gas sponsorship or batch transactions.
+
+## License
+
+MIT
+
+## Security / 보안
+
+[Current wallet security model](https://www.ohmywallet.xyz/en/security/) · [Report privately](mailto:support@ohmywallet.xyz)
+
+The full product source is private. The public Connect snapshot may lag the published package and deployed services. PRF-derived keys exist in Vault JavaScript memory during signing; this is not hardware-wallet-equivalent protection.

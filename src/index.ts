@@ -1,97 +1,129 @@
 /**
  * @ohmywallet/connect
  *
- * dApp에서 OhMyWallet을 연결하기 위한 공개 라이브러리
- *
- * 이 패키지는 iframe 기반 통신만 제공합니다.
- * 개인키 관련 API는 포함되지 않습니다.
- *
- * ## SignerType 기반 API
- *
- * @example
- * ```typescript
- * import { IframeHost } from "@ohmywallet/connect";
- *
- * const wallet = new IframeHost({
- *   iframeSrc: "https://vault.ohmywallet.xyz",
- * });
- *
- * // === PasskeySigner (P-256 직접 서명) ===
- * const passkey = await wallet.connectWithSignerType({ signerType: "passkey" });
- * // → { signerType: "passkey", passkeys: [...], activePasskey: {...} }
- *
- * const sig = await wallet.signWithPasskey(challenge, {
- *   keyId: passkey.passkeys[0].keyId,
- * });
- * // → { signerType: "passkey", keyId, signature: { r, s }, authenticatorData, clientDataJSON }
- *
- * // === DerivationSigner (파생 키 서명) ===
- * const derived = await wallet.connectWithSignerType({ signerType: "derivation" });
- * // → { signerType: "derivation", addresses: [...], activeAddress: {...} }
- *
- * const sig = await wallet.signWithDerivation(txHash, {
- *   address: derived.addresses[0].address,
- * });
- * // → { signerType: "derivation", address, signature: "0x..." }
- *
- * // 종료
- * wallet.destroy();
- * ```
+ * Derivation-only signer integration for dApps. The public surface exposes
+ * structured EVM signing, raw Solana signing, and address derivation without
+ * exposing relay protocol details or signing secrets.
  */
 
-// Host (dApp 측)
-export { IframeHost, type IframeHostState, type IframeHostEvents } from "./host";
+import { DEFAULT_IFRAME_SRC, IframeHost as RuntimeIframeHost } from "./host";
+import type {
+  DerivationConnectOptions,
+  DerivationConnectResult,
+  DerivationSignResult,
+  DeriveAddressOptions,
+  DeriveAddressSuccess,
+  EvmSignOptions,
+  EvmSigningRequest,
+  IframeHost as PublicIframeHost,
+  IframeHostConfig,
+  IframeHostEvents,
+  IframeHostState,
+  PrimaryConnectResult,
+  PrimarySignResult,
+  SolanaRawSigningRequest,
+  SolanaSignOptions,
+} from "./types";
 
-// =============================================================================
-// SignerType 기반 API 타입
-// =============================================================================
+export { DEFAULT_IFRAME_SRC };
+
+/** Derivation-only host with an exact, declaration-safe public surface. */
+export class IframeHost {
+  readonly #runtime: PublicIframeHost;
+
+  constructor(config: IframeHostConfig = {}) {
+    this.#runtime = new RuntimeIframeHost(config);
+  }
+
+  get currentState(): IframeHostState {
+    return this.#runtime.currentState;
+  }
+
+  connect(): Promise<PrimaryConnectResult> {
+    return this.#runtime.connect();
+  }
+
+  deriveAddress(options: DeriveAddressOptions): Promise<DeriveAddressSuccess> {
+    return this.#runtime.deriveAddress(options);
+  }
+
+  sign(request: EvmSigningRequest, options: EvmSignOptions): Promise<PrimarySignResult>;
+  sign(request: SolanaRawSigningRequest, options: SolanaSignOptions): Promise<PrimarySignResult>;
+  sign(
+    request: EvmSigningRequest | SolanaRawSigningRequest,
+    options: EvmSignOptions | SolanaSignOptions
+  ): Promise<PrimarySignResult> {
+    return Reflect.apply(this.#runtime.sign, this.#runtime, [request, options]);
+  }
+
+  cancel(): boolean {
+    return this.#runtime.cancel();
+  }
+
+  destroy(): void {
+    this.#runtime.destroy();
+  }
+
+  onEvent<K extends keyof IframeHostEvents>(event: K, handler: IframeHostEvents[K]): () => void {
+    return this.#runtime.onEvent(event, handler);
+  }
+
+  /** @deprecated Use `connect()` instead. This alias will be removed in 0.8. */
+  connectWithSignerType(options: DerivationConnectOptions): Promise<DerivationConnectResult> {
+    return this.#runtime.connectWithSignerType(options);
+  }
+
+  /** @deprecated Use `sign()` instead. This alias will be removed in 0.8. */
+  signWithDerivation(
+    request: EvmSigningRequest,
+    options: EvmSignOptions
+  ): Promise<DerivationSignResult>;
+  signWithDerivation(
+    request: SolanaRawSigningRequest,
+    options: SolanaSignOptions
+  ): Promise<DerivationSignResult>;
+  signWithDerivation(
+    request: EvmSigningRequest | SolanaRawSigningRequest,
+    options: EvmSignOptions | SolanaSignOptions
+  ): Promise<DerivationSignResult> {
+    return Reflect.apply(this.#runtime.signWithDerivation, this.#runtime, [request, options]);
+  }
+}
 
 export type {
-  // 서명자 타입
-  SignerType,
-  // PasskeySigner
-  PasskeyInfo,
-  PasskeyConnectOptions,
-  PasskeyConnectResult,
-  PasskeySignOptions,
-  PasskeySignResult,
-  // DerivationSigner
+  IframeHostState,
+  IframeHostEvents,
+  DerivationCurve,
+  DerivationGroup,
+  BitcoinAddressType,
+  BitcoinNetwork,
+  SigningContext,
+  SigningMessage,
+  SigningTypedData,
+  EvmSigningRequest,
+  EvmSignOptions,
+  SolanaRawSigningRequest,
+  SolanaSignOptions,
   DerivationAddressInfo,
+  DeriveAddressOptions,
+  DeriveAddressSuccess,
+  PrimaryConnectResult as ConnectResult,
+  PrimarySignResult as SignResult,
   DerivationConnectOptions,
   DerivationConnectResult,
   DerivationSignOptions,
   DerivationSignResult,
-  // Derive Address (새 기능)
-  DeriveAddressOptions,
-  DeriveAddressResult,
-  DeriveAddressPayload,
-  // Union 타입
-  ConnectOptions,
-  ConnectResult,
-  SignOptions,
-  SignResult,
-  // 메시지
-  IframeMessageType,
-  IframeMessage,
-  // 페이로드
-  ConnectPayload,
-  PasskeySignPayload,
-  DerivationSignPayload,
-  // 설정
   IframeHostConfig,
   SupportedLocale,
-  // 에러
   IframeErrorCode,
 } from "./types";
 
+export { IframeError, isDerivationResult, isDerivationSignResult } from "./types";
+
 export {
-  IframeError,
-  // 타입 가드
-  isPasskeyResult,
-  isDerivationResult,
-  isPasskeySignResult,
-  isDerivationSignResult,
-  // 참고용 상수 & 헬퍼
-  RIP7212_NATIVE_CHAINS,
-  supportsRIP7212,
-} from "./types";
+  createProvider,
+  ConnectProvider,
+  ProviderRpcError,
+  CONNECT_CAPABILITIES,
+} from "./provider";
+export type { ConnectProviderOptions } from "./provider";

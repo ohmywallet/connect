@@ -1,7 +1,7 @@
 {
   "name": "@ohmywallet/connect",
-  "version": "0.6.2",
-  "description": "OhMyWallet dApp integration library - Secure PassKey wallet connection via iframe",
+  "version": "0.7.1",
+  "description": "OhMyWallet browser SDK for wallet connection, EVM signing and transactions via iframe",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -10,10 +10,15 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./wagmi": {
+      "import": "./dist/wagmi.js",
+      "types": "./dist/wagmi.d.ts"
     }
   },
   "files": [
     "dist",
+    "LICENSE",
     "README.md",
     "README.ko.md"
   ],
@@ -31,42 +36,42 @@
   },
   "sideEffects": false,
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
-    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
-    "sync": "bash scripts/sync-standalone.sh"
+    "lint": "eslint src/"
   },
   "dependencies": {
-    "viem": "^2.21.0"
+    "viem": "^2.55.8"
   },
   "devDependencies": {
-    "@types/node": "^22.12.0",
-    "eslint": "^9.26.0",
-    "typescript-eslint": "^8.32.0",
-    "tsup": "^8.0.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^24.13.3",
+    "eslint": "^9.39.5",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.1.11",
+    "@wagmi/core": "3.6.5"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0 || ^6.0.0",
+    "@wagmi/core": "^3.6.5"
   },
   "keywords": [
-    "ethereum",
     "wallet",
-    "passkey",
-    "webauthn",
+    "signer",
     "iframe",
     "dapp",
-    "smart-wallet",
-    "account-abstraction",
-    "erc-4337",
-    "eip-7702",
     "web3",
     "crypto",
     "blockchain",
-    "evm",
-    "base",
-    "optimism"
+    "evm"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "peerDependenciesMeta": {
+    "@wagmi/core": {
+      "optional": true
+    }
+  }
 }

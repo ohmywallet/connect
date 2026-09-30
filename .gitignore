@@ -1,31 +1,9 @@
-# Dependencies
 node_modules/
-
-# Build output
 dist/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-npm-debug.log*
-pnpm-debug.log*
-
-# Test coverage
-coverage/
-
-# Turbo
 .turbo/
-
-# Environment
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
 .env
-.env.local
-.env.*.local
+.env.*

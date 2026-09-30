@@ -4,13 +4,11 @@
  * dApp에서 사용하는 타입만 노출합니다.
  * 내부 구현 세부사항(credentialId, 개인키 등)은 노출하지 않습니다.
  *
- * ## SignerType 기반 API
- *
- * - PasskeySigner: P-256 직접 서명 (RIP-7212, WebAuthn 인증 등)
- * - DerivationSigner: 파생 키 서명 (EVM EOA, Solana, Bitcoin 등)
+ * 공개 패키지는 Derivation signer API만 노출합니다. Relay wire 타입과
+ * 호환성 구현에 필요한 레거시 타입은 이 모듈 내부에서만 사용합니다.
  */
 
-import type { Hash, Hex } from "viem";
+import type { Hex } from "viem";
 
 // =============================================================================
 // Derivation 관련 타입 (npm 배포용 독립 정의)
@@ -33,26 +31,50 @@ export type BitcoinNetwork = "mainnet" | "testnet4";
 // =============================================================================
 
 /** 트랜잭션 정보 */
-export interface TransactionInfo {
-  /** 보내는 주소 */
-  from: Hex;
-  /** 받는 주소 */
-  to: Hex;
-  /** 전송 금액 (wei, string으로 전달) */
-  value?: string;
-  /** 컨트랙트 호출 데이터 */
-  data?: Hex;
-  /** 가스 한도 (string으로 전달) */
-  gasLimit?: string;
-  /** 체인 ID */
-  chainId: number;
-  /** 체인 이름 */
+export interface SigningContext {
+  account?: string;
+  chainId?: number;
   chainName?: string;
-  /** 사용자의 현재 체인 ID */
   currentChainId?: number;
-  /** 사용자의 평균 전송 금액 (과도한 금액 감지용, string으로 전달) */
   averageTransactionValue?: string;
 }
+
+export type SigningMessage = { type: "text"; value: string } | { type: "raw"; value: Hex };
+
+export interface SigningTypedData {
+  domain: Record<string, unknown>;
+  types: Record<string, readonly { name: string; type: string }[]>;
+  primaryType: string;
+  message: Record<string, unknown>;
+}
+
+/** EVM structured signing request. */
+export type EvmSigningRequest =
+  | { kind: "transaction"; serializedTransaction: Hex; context?: SigningContext }
+  | { kind: "message"; message: SigningMessage; context?: SigningContext }
+  | { kind: "typedData"; typedData: SigningTypedData; context?: SigningContext };
+
+/** EVM signing selector: address XOR explicit EVM group and key index. */
+export type EvmSignOptions =
+  | { address: string; group?: never; keyIndex?: never }
+  | { address?: never; group: "evm"; keyIndex: number };
+
+/** Solana raw signing request. */
+export type SolanaRawSigningRequest = {
+  kind: "raw";
+  payload: Hex;
+  context?: SigningContext;
+};
+
+/** Solana raw signing requires an explicit group and key index. */
+export type SolanaSignOptions = {
+  address?: never;
+  group: "solana";
+  keyIndex: number;
+};
+
+/** @internal Relay compatibility request union. */
+export type SigningRequest = EvmSigningRequest | SolanaRawSigningRequest;
 
 // =============================================================================
 // 메시지 타입
@@ -65,7 +87,6 @@ export type IframeMessageType =
   | "SIGN_WITH_PASSKEY" // PasskeySigner 서명
   | "SIGN_WITH_DERIVATION" // DerivationSigner 서명
   | "DERIVE_ADDRESS" // 주소 파생 요청
-  | "EXPORT_PRIVATE_KEY_REQUEST" // 개인키 내보내기 요청
   | "DESTROY" // 세션 종료
   // iframe → 부모
   | "READY" // iframe 준비 완료
@@ -73,7 +94,6 @@ export type IframeMessageType =
   | "NEEDS_ONBOARDING" // 온보딩 필요 (지갑 없음)
   | "SIGN_RESULT" // 서명 결과
   | "DERIVE_ADDRESS_RESULT" // 주소 파생 결과
-  | "EXPORT_PRIVATE_KEY_RESULT" // 개인키 내보내기 결과
   | "ERROR"; // 에러 응답
 
 /** 기본 메시지 구조 */
@@ -134,10 +154,6 @@ export interface PasskeyConnectResult {
 export interface PasskeySignOptions {
   /** 서명할 PassKey의 keyId */
   keyId: Hex;
-  /** 트랜잭션 확인 모달 표시 여부 (선택) */
-  requireConfirmation?: boolean;
-  /** 트랜잭션 정보 (requireConfirmation=true일 때 권장) */
-  transactionInfo?: TransactionInfo;
 }
 
 /** PasskeySigner 서명 결과 */
@@ -175,43 +191,53 @@ export interface DerivationAddressInfo {
   bitcoinNetwork?: BitcoinNetwork;
 }
 
+/** Primary connection result returned by `IframeHost.connect()`. */
+export interface PrimaryConnectResult {
+  address: DerivationAddressInfo;
+}
+
+/** Primary signing result returned by `IframeHost.sign()`. */
+export interface PrimarySignResult {
+  address: string;
+  signature: Hex;
+}
+
 /**
- * DerivationSigner 연결 옵션 (범용 지갑)
+ * Compatibility options for `connectWithSignerType()`.
  *
- * ⚠️ Derivation은 범용 지갑이므로 dApp 특정 정보를 포함하지 않습니다.
+ * @deprecated Use `IframeHost.connect()` instead. This alias will be removed in 0.8.
  */
 export interface DerivationConnectOptions {
   signerType: "derivation";
-  // dappName, dappIcon 없음 (범용 지갑)
 }
 
-/** DerivationSigner 연결 결과 */
-export interface DerivationConnectResult {
+/**
+ * Compatibility result returned by `connectWithSignerType()`.
+ *
+ * @deprecated Use `ConnectResult` from `IframeHost.connect()` instead. This alias will be removed
+ * in 0.8.
+ */
+export type DerivationConnectResult = PrimaryConnectResult & {
   signerType: "derivation";
-  // addresses, activeAddress 제거 (iframe localStorage 종속 제거)
-}
+};
 
-/** DerivationSigner 서명 옵션 */
-export interface DerivationSignOptions {
-  /** 서명할 주소 (XOR: address 또는 group+keyIndex 중 하나만) */
-  address?: string;
-  /** 파생 키 그룹 (XOR: address 또는 group+keyIndex 중 하나만) */
-  group?: DerivationGroup;
-  /** 파생 키 인덱스 (XOR: address 또는 group+keyIndex 중 하나만) */
-  keyIndex?: number;
-  /** 트랜잭션 확인 모달 표시 여부 (선택) */
-  requireConfirmation?: boolean;
-  /** 트랜잭션 정보 (requireConfirmation=true일 때 권장) */
-  transactionInfo?: TransactionInfo;
-}
+/**
+ * Compatibility options for `signWithDerivation()`.
+ *
+ * @deprecated Use `EvmSignOptions` or `SolanaSignOptions` with `IframeHost.sign()` instead. This
+ * alias will be removed in 0.8.
+ */
+export type DerivationSignOptions = EvmSignOptions | SolanaSignOptions;
 
-/** DerivationSigner 서명 결과 */
-export interface DerivationSignResult {
+/**
+ * Compatibility result returned by `signWithDerivation()`.
+ *
+ * @deprecated Use `SignResult` from `IframeHost.sign()` instead. This alias will be removed in
+ * 0.8.
+ */
+export type DerivationSignResult = PrimarySignResult & {
   signerType: "derivation";
-  address: string;
-  /** 체인에 맞는 서명 포맷 */
-  signature: Hex;
-}
+};
 
 // -----------------------------------------------------------------------------
 // Derive Address Types
@@ -231,10 +257,14 @@ export interface DeriveAddressOptions {
   bitcoinNetwork?: BitcoinNetwork;
 }
 
-/** 주소 파생 결과 */
-export interface DeriveAddressResult {
-  address: DerivationAddressInfo;
-}
+/** 주소 파생 성공 결과 */
+export type DeriveAddressSuccess = { success: true; address: DerivationAddressInfo };
+
+/** 주소 파생 실패 결과 (wire protocol 전용, host는 reject로 변환) */
+export type DeriveAddressFailure = { success: false; error: string };
+
+/** 주소 파생 wire 응답 */
+export type DeriveAddressResult = DeriveAddressSuccess | DeriveAddressFailure;
 
 /** 주소 파생 요청 페이로드 */
 export type DeriveAddressPayload = DeriveAddressOptions;
@@ -278,65 +308,19 @@ export type ConnectPayload =
 
 /** PasskeySigner 서명 요청 페이로드 */
 export interface PasskeySignPayload {
-  hash: Hash;
+  request: SigningRequest;
   keyId: Hex;
-  /** 트랜잭션 확인 모달 표시 여부 (선택) */
-  requireConfirmation?: boolean;
-  /** 트랜잭션 정보 (requireConfirmation=true일 때 필수) */
-  transactionInfo?: TransactionInfo;
 }
 
 /** DerivationSigner 서명 요청 페이로드 */
 export interface DerivationSignPayload {
-  hash: Hash;
+  request: SigningRequest;
   /** 서명할 주소 (XOR: address 또는 group+keyIndex 중 하나만) */
   address?: string;
   /** 파생 키 그룹 (XOR: address 또는 group+keyIndex 중 하나만) */
   group?: DerivationGroup;
   /** 파생 키 인덱스 (XOR: address 또는 group+keyIndex 중 하나만) */
   keyIndex?: number;
-  /** 트랜잭션 확인 모달 표시 여부 (선택) */
-  requireConfirmation?: boolean;
-  /** 트랜잭션 정보 (requireConfirmation=true일 때 필수) */
-  transactionInfo?: TransactionInfo;
-}
-
-// -----------------------------------------------------------------------------
-// Export Private Key Types
-// -----------------------------------------------------------------------------
-
-/**
- * 개인키 내보내기 요청 페이로드
- *
- * ⚠️ 보안 경고: 개인키는 iframe 내부에서만 처리됩니다.
- * 부모 앱은 복사 완료 여부만 수신합니다.
- */
-export interface ExportPrivateKeyPayload {
-  /** 체인 그룹 (evm, solana, bitcoin, sui) */
-  group: DerivationGroup;
-  /** 키 인덱스 */
-  keyIndex: number;
-  /** 주소 (표시용) */
-  address: string;
-  /** Bitcoin 주소 타입 (bitcoin 그룹 전용) */
-  bitcoinAddressType?: BitcoinAddressType;
-  /** Bitcoin 네트워크 (bitcoin 그룹 전용) */
-  bitcoinNetwork?: BitcoinNetwork;
-}
-
-/**
- * 개인키 내보내기 결과
- *
- * ⚠️ 보안: 개인키 자체는 절대 포함하지 않습니다.
- * 복사 완료 여부만 반환합니다.
- */
-export interface ExportPrivateKeyResult {
-  /** 성공 여부 */
-  success: boolean;
-  /** 에러 메시지 (실패 시) */
-  error?: string;
-  /** 클립보드에 복사 완료 여부 */
-  copied?: boolean;
 }
 
 // =============================================================================
@@ -357,7 +341,9 @@ export type IframeErrorCode =
   | "ALREADY_EXISTS"
   | "USER_CANCELLED"
   | "UNKNOWN_KEY" // keyId를 찾을 수 없음
-  | "UNKNOWN_ADDRESS"; // address를 찾을 수 없음
+  | "UNKNOWN_ADDRESS" // address를 찾을 수 없음
+  | "EIP7702_UNAVAILABLE" // raw secp256k1 서명 비활성화
+  | "SECURITY_BOUNDARY_VIOLATION"; // Derivation 응답 보안 경계 위반
 
 /** iframe 에러 */
 export class IframeError extends Error {
@@ -400,9 +386,9 @@ export type SupportedLocale =
 
 /** IframeHost 설정 */
 export interface IframeHostConfig {
-  /** iframe src URL (예: https://vault.ohmywallet.xyz) */
-  iframeSrc: string;
-  /** 요청 타임아웃 (ms, 기본값: 30000) */
+  /** iframe src URL (기본값: https://embed.ohmywallet.xyz) */
+  iframeSrc?: string;
+  /** 요청 타임아웃 (ms, 기본값: 120000) */
   timeout?: number;
   /** iframe sandbox 속성 */
   sandbox?: string;
@@ -410,8 +396,52 @@ export interface IframeHostConfig {
   container?: HTMLElement;
   /** iframe UI 언어 (기본값: 브라우저 언어 또는 'ko') */
   locale?: SupportedLocale;
-  /** dApp origin (기본값: window.location.origin). iframe이 postMessage origin 검증에 사용 */
+  /** 이전 버전과의 소스 호환성을 위한 옵션. relay는 MessageEvent origin을 직접 바인딩 */
   origin?: string;
+}
+
+/** Public host lifecycle state. */
+export type IframeHostState = "idle" | "loading" | "ready" | "error" | "destroyed";
+
+/** Public host lifecycle events. */
+export interface IframeHostEvents {
+  error: (error: IframeError) => void;
+  destroyed: () => void;
+}
+
+/** Derivation-only public host surface. */
+export interface IframeHost {
+  readonly currentState: IframeHostState;
+
+  connect(): Promise<PrimaryConnectResult>;
+
+  deriveAddress(options: DeriveAddressOptions): Promise<DeriveAddressSuccess>;
+
+  sign(request: EvmSigningRequest, options: EvmSignOptions): Promise<PrimarySignResult>;
+  sign(request: SolanaRawSigningRequest, options: SolanaSignOptions): Promise<PrimarySignResult>;
+
+  cancel(): boolean;
+
+  destroy(): void;
+
+  onEvent<K extends keyof IframeHostEvents>(event: K, handler: IframeHostEvents[K]): () => void;
+
+  /**
+   * @deprecated Use `connect()` instead. This alias will be removed in 0.8.
+   */
+  connectWithSignerType(options: DerivationConnectOptions): Promise<DerivationConnectResult>;
+
+  /**
+   * @deprecated Use `sign()` instead. This alias will be removed in 0.8.
+   */
+  signWithDerivation(
+    request: EvmSigningRequest,
+    options: EvmSignOptions
+  ): Promise<DerivationSignResult>;
+  signWithDerivation(
+    request: SolanaRawSigningRequest,
+    options: SolanaSignOptions
+  ): Promise<DerivationSignResult>;
 }
 
 // =============================================================================
@@ -427,7 +457,7 @@ export interface IframeHostConfig {
  *
  * if (isPasskeyResult(result)) {
  *   // TypeScript가 result를 PasskeyConnectResult로 인식
- *   console.log(result.passkeys);
+ *   renderPasskeys(result.passkeys);
  * }
  * ```
  */
@@ -436,21 +466,16 @@ export function isPasskeyResult(result: ConnectResult): result is PasskeyConnect
 }
 
 /**
- * ConnectResult가 DerivationConnectResult인지 확인
+ * Narrows only compatibility results containing `signerType: "derivation"`.
+ * Returns `false` for primary results from `IframeHost.connect()`.
  *
- * @example
- * ```typescript
- * const result = await wallet.connectWithSignerType({ signerType: "derivation" });
- *
- * if (isDerivationResult(result)) {
- *   // TypeScript가 result를 DerivationConnectResult로 인식
- *   // 주소는 deriveAddress()로 별도 조회
- *   const { address } = await wallet.deriveAddress({ keyIndex: 0, group: "evm", curve: "secp256k1" });
- * }
- * ```
+ * @deprecated Primary `ConnectResult` values need no signer guard. This guard will be removed in
+ * 0.8.
  */
-export function isDerivationResult(result: ConnectResult): result is DerivationConnectResult {
-  return result.signerType === "derivation";
+export function isDerivationResult(
+  result: PrimaryConnectResult | DerivationConnectResult
+): result is DerivationConnectResult {
+  return "signerType" in result && result.signerType === "derivation";
 }
 
 /**
@@ -461,10 +486,15 @@ export function isPasskeySignResult(result: SignResult): result is PasskeySignRe
 }
 
 /**
- * SignResult가 DerivationSignResult인지 확인
+ * Narrows only compatibility results containing `signerType: "derivation"`.
+ * Returns `false` for primary results from `IframeHost.sign()`.
+ *
+ * @deprecated Primary `SignResult` values need no signer guard. This guard will be removed in 0.8.
  */
-export function isDerivationSignResult(result: SignResult): result is DerivationSignResult {
-  return result.signerType === "derivation";
+export function isDerivationSignResult(
+  result: PrimarySignResult | DerivationSignResult
+): result is DerivationSignResult {
+  return "signerType" in result && result.signerType === "derivation";
 }
 
 // =============================================================================
@@ -499,7 +529,7 @@ export const RIP7212_NATIVE_CHAINS = [
  *
  * // ✅ 좋은 예: 참고만 하고 명시적 선택
  * if (supportsRIP7212(324)) {
- *   console.log("zkSync Era는 PassKey를 권장합니다");
+ *   showPasskeyRecommendation();
  * }
  * const result = await wallet.connectWithSignerType({
  *   signerType: "passkey", // 명시적 선택
