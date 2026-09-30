@@ -14,6 +14,8 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-empty-object-type": "off",
+      // 보안: console.log 경고, warn/error는 허용
+      "no-console": ["warn", { allow: ["warn", "error"] }],
     },
   }
 );

@@ -1,23 +1,81 @@
-# @ohmywallet/connect — 공개 소스 스냅샷
+# @ohmywallet/connect
 
-[English](./README.md) · [현재 SDK 패키지](https://www.npmjs.com/package/@ohmywallet/connect) · [제품 문서](https://www.ohmywallet.xyz/ko/#developers)
+EIP-1193 Provider 또는 wagmi 커넥터로 dApp에 OhMyWallet을 연결하세요.
+Connect SDK는 Embed iframe과 Vault 독립창으로 EVM 지갑 연결·메시지 승인·거래 요청을 처리합니다. 별도의 OhMyWallet App은 필요하지 않습니다.
 
-이 저장소는 현재 **0.6.2 소스 스냅샷**을 포함합니다. 최신 npm 패키지나 운영 App·Embed·Vault와 다를 수 있습니다. 제품 전체 소스나 독립 보안 감사 결과로 해석하지 말고 설치하는 패키지의 버전을 확인해 주세요.
+[English](./README.md) · [데모](https://demo.ohmywallet.xyz/connect) · [공개 Connect 스냅샷](https://github.com/ohmywallet/connect)
 
-## 현재 제품 구조
+흐름은 **dApp → Connect → Embed iframe → Vault 독립창**입니다. 연결 계정과 권한은 Embed 세션에서만 관리하며 App 로그인이나 공유 저장소에 의존하지 않습니다. 개인키와 PRF 비밀값은 Vault 밖으로 전달하지 않습니다. 새로고침·연결 해제 후에는 다시 연결합니다.
 
-현재 Connect 제품의 흐름은 dApp → Connect → Embed iframe → 별도 Vault 창입니다. 임베디드 EVM 지갑 연결에는 독립 App이 필요하지 않습니다. 이는 현재 서비스 설명이며 이 저장소의 과거 스냅샷에 대한 호환성 보장은 아닙니다.
+## 설치
 
-현재 PRF 지갑은 WebAuthn PRF의 비밀값으로 Vault JavaScript에서 서명 키를 파생합니다. 패스키 인증을 사용한다고 파생 지갑 키가 하드웨어 보안 칩 안에만 머무는 것은 아닙니다. 서명 중 키는 브라우저 메모리에 존재합니다. 출처 격리·CSP·새 인증은 일부 위험을 줄이지만, 악성 Vault 코드·배포 및 도메인 권한 탈취·감염된 브라우저나 기기의 위험은 남습니다.
+```sh
+npm install @ohmywallet/connect
+```
 
-복구에는 같은 패스키와 PRF 호환 브라우저·저장소가 필요합니다. 클라우드 동기화만으로 모든 기기에서 복구를 보장하지 않습니다. 하드웨어 지갑 수준의 보호나 공개 독립 감사 완료를 주장하지 않습니다.
+ESM과 TypeScript 타입을 제공합니다. 임베딩할 서비스 도메인은 OhMyWallet에 등록해야 합니다. 등록은 [문의하기](mailto:hello@ohmywallet.xyz)를 이용하세요.
 
-현재 경로·지원 기능·한계는 [보안과 복구 안내](https://www.ohmywallet.xyz/ko/security/)와 [구조 설명 JSON](https://www.ohmywallet.xyz/security-model.json)을 확인해 주세요.
+## 연결
 
-## 보안 제보
+브라우저의 클라이언트 생명주기에서 Provider를 한 번 만들고, 연결 버튼에서 요청하세요.
 
-[SECURITY.md](./SECURITY.md)에 따라 support@ohmywallet.xyz로 비공개 제보해 주세요. 공개 이슈에 개인키·패스키 비밀값·인증 토큰을 게시하지 마세요.
+```ts
+import { createProvider } from "@ohmywallet/connect";
 
-## 패키지 배포
+const provider = createProvider({ chainId: 1 });
 
-이 스냅샷의 과거 npm 배포 워크플로는 비활성화되어 있습니다. 오래된 소스를 최신 패키지 위에 독립적으로 배포하면 안 됩니다. 패키지 발행은 제품의 별도 검증된 릴리스 절차를 따르며, README 수정으로 npm 패키지가 발행되지는 않습니다.
+const [account] = (await provider.request({
+  method: "eth_requestAccounts",
+})) as string[];
+
+// 로그아웃할 때:
+provider.disconnect();
+
+// 해당 화면을 해제할 때:
+provider.destroy();
+```
+
+viem의 `custom(provider)` transport와 함께 사용할 수 있습니다. EVM 계정 연결, SIWE 로그인 메시지, EIP-712 구조화 데이터, 거래 전송과 네트워크 변경을 지원합니다. 사용자는 별도 지갑 창에서 요청을 확인하고 승인합니다.
+
+지원 네트워크: Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain, Avalanche, Sepolia.
+
+## wagmi
+
+`@wagmi/core` 3용 선택형 진입점입니다. SDK와 함께 `@wagmi/core`, `viem`을 설치하세요.
+
+```ts
+import { connect, createConfig, disconnect } from "@wagmi/core";
+import { ohmywallet } from "@ohmywallet/connect/wagmi";
+import { http } from "viem";
+import { mainnet } from "viem/chains";
+
+const config = createConfig({
+  chains: [mainnet],
+  connectors: [ohmywallet()],
+  transports: { [mainnet.id]: http() },
+});
+
+// 연결 버튼:
+await connect(config, { connector: config.connectors[0] });
+
+// 로그아웃할 때:
+await disconnect(config);
+```
+
+## 연동 시 확인할 사항
+
+- CSP의 `frame-src`에 `https://embed.ohmywallet.xyz`를 허용하고, 지갑 승인 팝업을 허용하세요.
+- 요청 실패를 서비스 화면에서 처리하세요. 오류 코드 `4001`은 사용자 거절·취소입니다. 거래 전송은 자동 재시도하지 마세요.
+- `accountsChanged`, `chainChanged` 이벤트를 반영하세요. 새로고침 후 다시 연결해야 하며, `disconnect()`는 현재 Provider 세션을 해제합니다.
+- 잔액·거래 상태·로그인 세션은 서비스에서 관리합니다. SIWE challenge 검증과 nonce 소비는 서비스의 인증 계층에서 처리하세요.
+- Connect는 현재 EVM 계정을 지원합니다. 전체 지갑 화면, 가스 대납, 일괄 거래는 제공하지 않습니다.
+
+## 라이선스
+
+MIT
+
+## 보안
+
+[현재 지갑 보안 모델](https://www.ohmywallet.xyz/ko/security/) · [비공개 보안 제보](mailto:support@ohmywallet.xyz)
+
+제품 전체 소스는 비공개입니다. 공개 Connect 스냅샷은 최신 패키지 및 운영 서비스와 다를 수 있습니다. 서명 중 PRF 파생 키는 Vault JavaScript 메모리에 존재하며, 하드웨어 지갑 수준의 보호를 보장하지 않습니다.
