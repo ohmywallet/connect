@@ -1175,6 +1175,45 @@ function getDocumentCoordinator(ownerDocument: Document): HostSurfaceCoordinator
 type SurfaceLifecycle =
   "hidden" | "showing" | "shown" | "focusing" | "cleaning" | "disconnected" | "destroyed";
 
+/** Use CSSOM styles so integrators do not need to allow an injected stylesheet in CSP. */
+function bindSurfacePresentation(
+  ownerDocument: Document,
+  overlay: HTMLDivElement,
+  panel: HTMLDivElement
+): () => void {
+  const view = ownerDocument.defaultView;
+  if (!view?.matchMedia) return () => {};
+  const mobile = view.matchMedia("(max-width: 639px)");
+  const reducedMotion = view.matchMedia("(prefers-reduced-motion: reduce)");
+  const update = () => {
+    overlay.style.alignItems = mobile.matches ? "flex-end" : "center";
+    overlay.style.transition = reducedMotion.matches ? "none" : "opacity 0.2s ease";
+    panel.style.maxWidth = mobile.matches ? "100%" : "440px";
+    panel.style.height = mobile.matches
+      ? "min(760px, calc(100dvh - max(16px, env(safe-area-inset-top))))"
+      : "min(700px, calc(100dvh - 48px))";
+    panel.style.borderRadius = mobile.matches
+      ? "var(--omw-ui-radius-dialog, 24px) var(--omw-ui-radius-dialog, 24px) 0 0"
+      : "var(--omw-ui-radius-dialog, 24px)";
+  };
+  const release = () => {
+    try {
+      mobile.removeEventListener("change", update);
+    } finally {
+      reducedMotion.removeEventListener("change", update);
+    }
+  };
+  try {
+    update();
+    mobile.addEventListener("change", update);
+    reducedMotion.addEventListener("change", update);
+  } catch (error) {
+    release();
+    throw error;
+  }
+  return release;
+}
+
 class BrowserHostSurface implements HostSurface {
   readonly iframe: HTMLIFrameElement;
 
@@ -1186,6 +1225,7 @@ class BrowserHostSurface implements HostSurface {
   private readonly coordinator: HostSurfaceCoordinator;
   private readonly coordinatorOwner: CoordinatorOwner;
   private readonly detachOwnedOverlay: () => void;
+  private releasePresentation: (() => void) | null = null;
   private readonly onEscape: () => void;
   private readonly onDisconnect: () => void;
   private containerObserver: MutationObserver | null = null;
@@ -1221,6 +1261,7 @@ class BrowserHostSurface implements HostSurface {
       left: 0;
       width: 100%;
       height: 100%;
+      height: 100dvh;
       background: rgba(0, 0, 0, 0.6);
       display: flex;
       align-items: center;
@@ -1236,11 +1277,11 @@ class BrowserHostSurface implements HostSurface {
     const iframeContainer = ownerDocument.createElement("div");
     iframeContainer.style.cssText = `
       width: 100%;
-      max-width: 420px;
-      height: 90%;
-      max-height: 700px;
+      max-width: 440px;
+      height: min(700px, calc(100vh - 48px));
+      height: min(700px, calc(100dvh - 48px));
       background: transparent;
-      border-radius: 16px;
+      border-radius: var(--omw-ui-radius-dialog, 24px);
       overflow: hidden;
       box-shadow: none;
       position: relative;
@@ -1253,6 +1294,7 @@ class BrowserHostSurface implements HostSurface {
     iframe.style.cssText = `
       width: 100%;
       height: 100%;
+      display: block;
       border: none;
     `;
     iframe.setAttribute("sandbox", options.sandbox);
@@ -1299,6 +1341,7 @@ class BrowserHostSurface implements HostSurface {
 
     let observer: MutationObserver | null = null;
     try {
+      this.releasePresentation = bindSurfacePresentation(ownerDocument, overlay, iframeContainer);
       if (this.configuredContainer) {
         observer = new MutationObserver((records) => {
           this.handleContainerMutation(records);
@@ -1317,6 +1360,7 @@ class BrowserHostSurface implements HostSurface {
         throw new HostSurfaceContainerDisconnectedError();
       }
     } catch (error) {
+      this.clearPresentation();
       const mountedObserver = this.containerObserver === observer ? observer : null;
       this.containerObserver = null;
       if (mountedObserver) this.attemptCleanup(() => mountedObserver.disconnect());
@@ -1387,6 +1431,7 @@ class BrowserHostSurface implements HostSurface {
 
     this.lifecycleGeneration += 1;
     this.lifecycle = "destroyed";
+    this.clearPresentation();
     this.concealOverlay();
     this.attemptCleanup(() => this.coordinator.deactivate(this.coordinatorOwner, false));
     const observer = this.containerObserver;
@@ -1459,6 +1504,12 @@ class BrowserHostSurface implements HostSurface {
     }
   }
 
+  private clearPresentation(): void {
+    const release = this.releasePresentation;
+    this.releasePresentation = null;
+    if (release) this.attemptCleanup(release);
+  }
+
   private captureMountPath(element: Element): readonly Element[] {
     const path: Element[] = [];
     let current: Element | null = element;
@@ -1511,6 +1562,7 @@ class BrowserHostSurface implements HostSurface {
     this.disconnectNotified = true;
     this.lifecycleGeneration += 1;
     this.lifecycle = "disconnected";
+    this.clearPresentation();
     this.concealOverlay();
     this.attemptCleanup(() => this.coordinator.deactivate(this.coordinatorOwner, false));
     const observer = this.containerObserver;

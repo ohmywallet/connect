@@ -1,5 +1,6 @@
 import {
   createPublicClient,
+  defineChain,
   http,
   isAddress,
   serializeTransaction,
@@ -12,8 +13,21 @@ import {
   type Address,
   type Hex,
   type TransactionSerialized,
+  type Chain,
 } from "viem";
-import { mainnet, base, arbitrum, optimism, polygon, bsc, avalanche, sepolia } from "viem/chains";
+import {
+  mainnet,
+  base,
+  arbitrum,
+  optimism,
+  polygon,
+  bsc,
+  avalanche,
+  sepolia,
+  arc,
+  arcTestnet,
+  baseSepolia,
+} from "viem/chains";
 import { IframeHost } from "./index";
 import type {
   IframeHostConfig,
@@ -23,7 +37,128 @@ import type {
   EvmSignOptions,
 } from "./types";
 
-const chains = [mainnet, base, arbitrum, optimism, polygon, bsc, avalanche, sepolia] as const;
+// Fixed public metadata projection. Catalog consistency is checked offline in tests;
+// Connect's runtime remains independent of workspace data and wallet packages.
+const chainIds = [1, 8453, 42161, 10, 137, 56, 43114, 11155111, 5042, 84532, 5042002] as const;
+const existingChains: readonly Chain[] = [
+  mainnet,
+  base,
+  arbitrum,
+  optimism,
+  polygon,
+  bsc,
+  avalanche,
+  sepolia,
+  arc,
+  arcTestnet,
+  baseSepolia,
+];
+const reviewedMetadata = {
+  1: {
+    name: "Ethereum",
+    currency: "Ethereum",
+    symbol: "ETH",
+    rpc: "https://ethereum-rpc.publicnode.com",
+    explorer: "https://etherscan.io",
+    testnet: false,
+  },
+  8453: {
+    name: "Base",
+    currency: "Ethereum",
+    symbol: "ETH",
+    rpc: "https://mainnet.base.org",
+    explorer: "https://basescan.org",
+    testnet: false,
+  },
+  42161: {
+    name: "Arbitrum One",
+    currency: "Ethereum",
+    symbol: "ETH",
+    rpc: "https://arb1.arbitrum.io/rpc",
+    explorer: "https://arbiscan.io",
+    testnet: false,
+  },
+  10: {
+    name: "Optimism",
+    currency: "Ethereum",
+    symbol: "ETH",
+    rpc: "https://mainnet.optimism.io",
+    explorer: "https://optimistic.etherscan.io",
+    testnet: false,
+  },
+  137: {
+    name: "Polygon",
+    currency: "POL",
+    symbol: "POL",
+    rpc: "https://polygon.drpc.org",
+    explorer: "https://polygonscan.com",
+    testnet: false,
+  },
+  56: {
+    name: "BNB Smart Chain",
+    currency: "BNB",
+    symbol: "BNB",
+    rpc: "https://bsc-dataseed.binance.org",
+    explorer: "https://bscscan.com",
+    testnet: false,
+  },
+  43114: {
+    name: "Avalanche C-Chain",
+    currency: "Avalanche",
+    symbol: "AVAX",
+    rpc: "https://api.avax.network/ext/bc/C/rpc",
+    explorer: "https://snowtrace.io",
+    testnet: false,
+  },
+  11155111: {
+    name: "Ethereum Sepolia",
+    currency: "Ethereum",
+    symbol: "ETH",
+    rpc: "https://ethereum-sepolia-rpc.publicnode.com",
+    explorer: "https://sepolia.etherscan.io",
+    testnet: true,
+  },
+  5042: {
+    name: "Arc",
+    currency: "USDC",
+    symbol: "USDC",
+    rpc: "https://arc-rpc.publicnode.com",
+    explorer: "https://explorer.arc.io",
+    testnet: false,
+  },
+  84532: {
+    name: "Base Sepolia",
+    currency: "Ethereum",
+    symbol: "ETH",
+    rpc: "https://sepolia.base.org",
+    explorer: "https://sepolia.basescan.org",
+    testnet: true,
+  },
+  5042002: {
+    name: "Arc Testnet",
+    currency: "USDC",
+    symbol: "USDC",
+    rpc: "https://arc-testnet.drpc.org",
+    explorer: "https://testnet.arcscan.app",
+    testnet: true,
+  },
+} as const;
+const chains: readonly Chain[] = Object.freeze(
+  chainIds.map((id) => {
+    const entry = reviewedMetadata[id];
+    const chain = existingChains.find((chain) => chain.id === id);
+    if (!chain) throw new Error("Missing reviewed Connect chain");
+    return defineChain({
+      ...chain,
+      id,
+      name: entry.name,
+      nativeCurrency: Object.freeze({ name: entry.currency, symbol: entry.symbol, decimals: 18 }),
+      rpcUrls: { default: { http: [entry.rpc] } },
+      blockExplorers: { default: { name: entry.name, url: entry.explorer } },
+      testnet: entry.testnet,
+    });
+  })
+);
 export const CONNECT_CAPABILITIES = Object.freeze({
   version: 1,
   wallet: "prf",
@@ -152,15 +287,33 @@ export class ConnectProvider {
     if (args.params !== undefined && !Array.isArray(args.params))
       return fail(-32602, "Expected positional parameters");
     const params = (args.params ?? []) as readonly unknown[];
-    const client = createPublicClient({ chain: this.#chain, transport: http() });
     if (args.method === "eth_accounts") return this.#account ? [this.#account] : [];
     if (args.method === "eth_chainId") return `0x${this.#chain.id.toString(16)}`;
-    if (args.method === "wallet_getCapabilities")
+    if (args.method === "wallet_getCapabilities") {
+      if (params.length < 1 || params.length > 2)
+        return fail(-32602, "Expected an account and optional chain IDs");
+      const requestedAccount = address(params[0]);
+      if (!this.#account || requestedAccount.toLowerCase() !== this.#account.toLowerCase())
+        return fail(4100, "Account not authorized");
+      let selected = chains;
+      if (params.length === 2) {
+        if (!Array.isArray(params[1])) return fail(-32602, "Expected chain IDs");
+        const requested = new Set(params[1].map(quantity));
+        // EIP-5792 omits unsupported queried chains instead of rejecting them.
+        selected = chains.filter((chain) => requested.has(BigInt(chain.id)));
+      }
       return Object.fromEntries(
-        [this.#chain].map((c) => [`0x${c.id.toString(16)}`, { atomic: { status: "unsupported" } }])
+        selected.map((chain) => [
+          `0x${chain.id.toString(16)}`,
+          { atomic: { status: "unsupported" } },
+        ])
       );
+    }
     if (readonlyMethods.has(args.method))
-      return client.request({ method: args.method, params } as never);
+      return createPublicClient({ chain: this.#chain, transport: http() }).request({
+        method: args.method,
+        params,
+      } as never);
     if (
       ![
         "eth_requestAccounts",
@@ -312,6 +465,7 @@ export class ConnectProvider {
       if (typeof data !== "string" || !/^0x(?:[0-9a-f]{2})*$/i.test(data) || data.length > 32770)
         return fail(-32602, "Invalid transaction data");
       const value = tx.value === undefined ? 0n : quantity(tx.value);
+      const client = createPublicClient({ chain: this.#chain, transport: http() });
       if ((await client.getChainId()) !== chainId) return fail(4901, "RPC chain mismatch");
       current();
       const estimated = await client.estimateGas({ account, to, value, data });

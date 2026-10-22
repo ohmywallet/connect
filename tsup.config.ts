@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/wagmi.ts"],
+  entry: ["src/index.ts", "src/wagmi.ts", "src/app.ts", "src/app-wagmi.ts"],
   format: ["esm"],
   dts: true,
   clean: true,
@@ -9,7 +9,7 @@ export default defineConfig({
   treeshake: true,
   minify: false,
   sourcemap: false,
-  external: ["viem", "@wagmi/core"],
+  external: ["viem", "@wagmi/core", "@walletconnect/sign-client"],
   esbuildOptions(options) {
     // Remove esbuild's source-file banner comments without renaming public symbols.
     options.minifyWhitespace = true;

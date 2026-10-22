@@ -1321,7 +1321,8 @@ describe("IframeHost primary lifecycle and cancellation", () => {
       if (timeoutThenCancel) {
         timeoutThenCancel = false;
         const callback = args[0];
-        if (typeof callback === "function") callback(...args.slice(2));
+        if (typeof callback === "function")
+          (callback as (...parameters: unknown[]) => void)(...args.slice(2));
         cancelResult = host!.cancel();
       }
       return timeout;
@@ -1923,7 +1924,7 @@ describe("IframeHost relay bootstrap", () => {
       nativeSetInterval(...args);
       if (iframe) dispatchFromIframe(iframe, { type: "RELAY_READY", version: 2 });
       throw schedulingError;
-    }) as typeof setInterval);
+    }) as unknown as typeof setInterval);
     const host = new IframeHost();
     const connection = host.connectWithSignerType({ signerType: "derivation" });
     const outcome = connection.then(
@@ -2005,7 +2006,7 @@ describe("IframeHost relay bootstrap", () => {
         if (throwPhase === "before") throw wrapperError;
         nativeSetInterval(...args);
         throw wrapperError;
-      }) as typeof setInterval);
+      }) as unknown as typeof setInterval);
       const connection = host.connectWithSignerType({ signerType: "derivation" });
       const outcome = connection.then(
         (value) => ({ status: "fulfilled" as const, value }),
@@ -2042,7 +2043,7 @@ describe("IframeHost relay bootstrap", () => {
       nativeSetTimeout(...args);
       host.destroy();
       throw schedulingError;
-    }) as typeof setTimeout);
+    }) as unknown as typeof setTimeout);
     const outcome = host.connectWithSignerType({ signerType: "derivation" }).then(
       (value) => ({ status: "fulfilled" as const, value }),
       (error: unknown) => ({ status: "rejected" as const, error })
@@ -3169,7 +3170,8 @@ describe("IframeHost surface ownership", () => {
       if (settleNextRequest) {
         settleNextRequest = false;
         const callback = args[0];
-        if (typeof callback === "function") callback(...args.slice(2));
+        if (typeof callback === "function")
+          (callback as (...parameters: unknown[]) => void)(...args.slice(2));
       }
       return timeout;
     }) as typeof setTimeout);
@@ -3208,7 +3210,8 @@ describe("IframeHost surface ownership", () => {
       if (settleNextRequest) {
         settleNextRequest = false;
         const callback = args[0];
-        if (typeof callback === "function") callback(...args.slice(2));
+        if (typeof callback === "function")
+          (callback as (...parameters: unknown[]) => void)(...args.slice(2));
       }
       return timeout;
     }) as typeof setTimeout);
@@ -4435,11 +4438,11 @@ describe("IframeHost initialization cleanup", () => {
       vi.stubGlobal("clearTimeout", ((timeout: ReturnType<typeof setTimeout>) => {
         if (clearPhase === "after") nativeClearTimeout(timeout);
         throw cancellationError;
-      }) as typeof clearTimeout);
+      }) as unknown as typeof clearTimeout);
       vi.stubGlobal("clearInterval", ((interval: ReturnType<typeof setInterval>) => {
         if (clearPhase === "after") nativeClearInterval(interval);
         throw cancellationError;
-      }) as typeof clearInterval);
+      }) as unknown as typeof clearInterval);
       const host = new IframeHost({ timeout: 30_000 });
       const connection = host.connectWithSignerType({ signerType: "derivation" });
       let settlements = 0;
