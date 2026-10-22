@@ -1,7 +1,7 @@
 {
   "name": "@ohmywallet/connect",
-  "version": "0.7.1",
-  "description": "OhMyWallet browser SDK for wallet connection, EVM signing and transactions via iframe",
+  "version": "0.8.0",
+  "description": "OhMyWallet browser SDK for Embed iframe and optional App WalletConnect connections, EVM signing and transactions",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -14,6 +14,14 @@
     "./wagmi": {
       "import": "./dist/wagmi.js",
       "types": "./dist/wagmi.d.ts"
+    },
+    "./app": {
+      "import": "./dist/app.js",
+      "types": "./dist/app.d.ts"
+    },
+    "./app-wagmi": {
+      "import": "./dist/app-wagmi.js",
+      "types": "./dist/app-wagmi.d.ts"
     }
   },
   "files": [
@@ -52,11 +60,13 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.11",
-    "@wagmi/core": "3.6.5"
+    "@wagmi/core": "3.6.5",
+    "@walletconnect/sign-client": "2.23.10"
   },
   "peerDependencies": {
     "typescript": "^5.0.0 || ^6.0.0",
-    "@wagmi/core": "^3.6.5"
+    "@wagmi/core": "^3.6.5",
+    "@walletconnect/sign-client": "^2.23.10"
   },
   "keywords": [
     "wallet",
@@ -71,6 +81,9 @@
   "license": "MIT",
   "peerDependenciesMeta": {
     "@wagmi/core": {
+      "optional": true
+    },
+    "@walletconnect/sign-client": {
       "optional": true
     }
   }

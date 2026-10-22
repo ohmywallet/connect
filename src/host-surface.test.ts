@@ -84,6 +84,7 @@ class FakeIframe extends FakeElement {
 }
 
 class FakeDocument {
+  defaultView: { matchMedia: (query: string) => MediaQueryList } | null = null;
   readonly documentElement: FakeElement;
   readonly body: FakeElement;
   activeElement: FakeElement | null;
@@ -267,6 +268,53 @@ function makeSurface(overrides: Partial<HostSurfaceOptions> = {}): HostSurface {
 function asHTMLElement(value: FakeElement): HTMLElement {
   return value as unknown as HTMLElement;
 }
+
+function mediaPreference(initial: boolean) {
+  const listeners = new Set<() => void>();
+  const query = {
+    matches: initial,
+    addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+    removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+  };
+  return {
+    query: query as unknown as MediaQueryList,
+    change(matches: boolean) {
+      query.matches = matches;
+      for (const listener of listeners) listener();
+    },
+    get listenerCount() {
+      return listeners.size;
+    },
+  };
+}
+
+it("keeps the same active iframe and focus across viewport and motion changes, then releases media listeners", () => {
+  const mobile = mediaPreference(true);
+  const reducedMotion = mediaPreference(false);
+  fakeDocument.defaultView = {
+    matchMedia: (query) => (query.includes("reduced-motion") ? reducedMotion.query : mobile.query),
+  };
+  const initiator = mount(fakeDocument.body, element("button"));
+  const escape = vi.fn();
+  const surface = makeSurface({ onEscape: escape });
+  surface.show(initiator as unknown as Element);
+  const iframe = surface.iframe;
+  const overlay = overlayOf(surface);
+  const focusCalls = (iframe as unknown as FakeIframe).focus.mock.calls.length;
+  mobile.change(false);
+  reducedMotion.change(true);
+  expect(surface.iframe).toBe(iframe);
+  expect(overlayOf(surface)).toBe(overlay);
+  expect(fakeDocument.activeElement).toBe(iframe);
+  expect((iframe as unknown as FakeIframe).focus).toHaveBeenCalledTimes(focusCalls);
+  fakeDocument.dispatchKey("Escape");
+  expect(escape).toHaveBeenCalledOnce();
+  expect(mobile.listenerCount).toBe(1);
+  expect(reducedMotion.listenerCount).toBe(1);
+  surface.destroy();
+  expect(mobile.listenerCount).toBe(0);
+  expect(reducedMotion.listenerCount).toBe(0);
+});
 
 function makeInertChannelsIndependent(element: FakeElement): void {
   let inertValue = element.inert;

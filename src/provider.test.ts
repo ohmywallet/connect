@@ -1,8 +1,29 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
-import { parseTransaction, stringToHex, keccak256, type TransactionSerializable } from "viem";
-import { ConnectProvider } from "./provider";
+import {
+  createWalletClient,
+  custom,
+  parseTransaction,
+  stringToHex,
+  keccak256,
+  type TransactionSerializable,
+} from "viem";
+import {
+  mainnet,
+  base,
+  arbitrum,
+  optimism,
+  polygon,
+  bsc,
+  avalanche,
+  sepolia,
+  arc,
+  arcTestnet,
+  baseSepolia,
+} from "viem/chains";
+import { CONNECT_CAPABILITIES, ConnectProvider } from "./provider";
 const rpc = vi.hoisted(() => ({
+  createPublicClient: vi.fn(),
   request: vi.fn(),
   getChainId: vi.fn(),
   estimateGas: vi.fn(),
@@ -14,7 +35,10 @@ const rpc = vi.hoisted(() => ({
 }));
 vi.mock("viem", async (original) => ({
   ...(await original<object>()),
-  createPublicClient: () => rpc,
+  createPublicClient: (options: unknown) => {
+    rpc.createPublicClient(options);
+    return rpc;
+  },
 }));
 const account = privateKeyToAccount(`0x${"11".repeat(32)}`);
 const other = privateKeyToAccount(`0x${"22".repeat(32)}`);
@@ -221,4 +245,197 @@ it("disconnect revokes the embedded grant as well as the provider account", asyn
   embedded.disconnect();
   expect(disconnect).toHaveBeenCalledOnce();
   expect(await embedded.request({ method: "eth_accounts" })).toEqual([]);
+});
+
+const reviewedChainIds = [1, 8453, 42161, 10, 137, 56, 43114, 11155111, 5042, 84532, 5042002];
+const capabilities = (chainIds: readonly number[]) =>
+  Object.fromEntries(
+    chainIds.map((chainId) => [`0x${chainId.toString(16)}`, { atomic: { status: "unsupported" } }])
+  );
+it("advertises only the reviewed EVM scope without adding signing or funding capabilities", () => {
+  expect(CONNECT_CAPABILITIES.chainIds).toEqual(reviewedChainIds);
+  expect(Object.isFrozen(CONNECT_CAPABILITIES.chainIds)).toBe(true);
+  expect(CONNECT_CAPABILITIES).toMatchObject({
+    wallet: "prf",
+    accounts: "evm",
+    batch: false,
+    sponsorship: false,
+    rawSigning: false,
+    transactionTypes: ["legacy", "eip1559"],
+  });
+  expect(() => new ConnectProvider({ chainId: 324 }, host)).toThrow("Unsupported chain");
+  expect(() => new ConnectProvider({ chainId: 900001 }, host)).toThrow("Unsupported chain");
+  expect(host.connect).not.toHaveBeenCalled();
+  expect(host.sign).not.toHaveBeenCalled();
+});
+
+it.each([
+  mainnet,
+  base,
+  arbitrum,
+  optimism,
+  polygon,
+  bsc,
+  avalanche,
+  sepolia,
+  arc,
+  arcTestnet,
+  baseSepolia,
+])("preserves existing viem behavior hooks on $name", async (chain) => {
+  const selected = new ConnectProvider({ chainId: chain.id }, host);
+  await selected.request({ method: "eth_blockNumber" });
+  const options = rpc.createPublicClient.mock.calls[0]![0];
+  for (const key of ["formatters", "serializers", "fees", "contracts"] as const)
+    expect(options.chain[key]).toBe(chain[key]);
+});
+
+it("negotiates the connected EOA's explicit capabilities without RPC or authentication", async () => {
+  await connect();
+  rpc.createPublicClient.mockClear();
+  expect(
+    await provider.request({ method: "wallet_getCapabilities", params: [account.address] })
+  ).toEqual(capabilities(reviewedChainIds));
+  expect(
+    await provider.request({
+      method: "wallet_getCapabilities",
+      params: [account.address, ["0x13b2", "0x14a34", "0x4cef52", "0x13b2", "0x123456"]],
+    })
+  ).toEqual(capabilities([5042, 84532, 5042002]));
+  expect(
+    await provider.request({ method: "wallet_getCapabilities", params: [account.address, []] })
+  ).toEqual({});
+  expect(
+    await provider.request({
+      method: "wallet_getCapabilities",
+      params: [account.address, ["0x0", "0x123456"]],
+    })
+  ).toEqual({});
+  expect(host.connect).toHaveBeenCalledOnce();
+  expect(host.sign).not.toHaveBeenCalled();
+  expect(rpc.createPublicClient).not.toHaveBeenCalled();
+  expect(rpc.request).not.toHaveBeenCalled();
+});
+
+it("works with viem's real capability consumer without changing the selected network", async () => {
+  await connect();
+  const client = createWalletClient({
+    account: account.address,
+    transport: custom(provider, { retryCount: 0 }),
+  });
+  expect(await client.getCapabilities({ chainId: 5042 })).toEqual({
+    atomic: { status: "unsupported" },
+  });
+  expect(await client.getCapabilities({ chainId: 84532 })).toEqual({
+    atomic: { status: "unsupported" },
+  });
+  expect(await client.getCapabilities({ chainId: 123456 })).toBeUndefined();
+  expect(Object.keys(await client.getCapabilities())).toHaveLength(reviewedChainIds.length);
+  expect(await provider.request({ method: "eth_chainId" })).toBe("0x1");
+  expect(host.connect).toHaveBeenCalledOnce();
+  expect(host.sign).not.toHaveBeenCalled();
+  expect(rpc.createPublicClient).not.toHaveBeenCalled();
+});
+
+it("does not grant capability access to an unconnected, different or disconnected account", async () => {
+  await expect(
+    provider.request({ method: "wallet_getCapabilities", params: [account.address] })
+  ).rejects.toMatchObject({ code: 4100 });
+  await connect();
+  await expect(
+    provider.request({ method: "wallet_getCapabilities", params: [other.address] })
+  ).rejects.toMatchObject({ code: 4100 });
+  provider.disconnect();
+  await expect(
+    provider.request({ method: "wallet_getCapabilities", params: [account.address] })
+  ).rejects.toMatchObject({ code: 4100 });
+  expect(host.connect).toHaveBeenCalledOnce();
+  expect(host.sign).not.toHaveBeenCalled();
+  expect(rpc.createPublicClient).not.toHaveBeenCalled();
+});
+
+it.each(
+  [
+    [],
+    ["invalid"],
+    [account.address, "0x1"],
+    [account.address, [1]],
+    [account.address, ["0x01"]],
+    [account.address, ["1"]],
+    [account.address, ["0x-1"]],
+    [account.address, [], "extra"],
+  ].map((params) => ({ params }))
+)("rejects malformed capability parameters without side effects: $params", async ({ params }) => {
+  await connect();
+  await expect(
+    provider.request({ method: "wallet_getCapabilities", params })
+  ).rejects.toMatchObject({ code: -32602 });
+  expect(host.connect).toHaveBeenCalledOnce();
+  expect(host.sign).not.toHaveBeenCalled();
+  expect(rpc.createPublicClient).not.toHaveBeenCalled();
+});
+
+it("keeps independent provider scopes and capability responses isolated", async () => {
+  const secondHost = {
+    ...host,
+    connect: vi.fn().mockResolvedValue({
+      address: { group: "evm", address: other.address },
+    }),
+  };
+  const second = new ConnectProvider({ chainId: 5042 }, secondHost);
+  await connect();
+  await second.request({ method: "eth_requestAccounts" });
+  const firstCapabilities = (await provider.request({
+    method: "wallet_getCapabilities",
+    params: [account.address, ["0x1"]],
+  })) as Record<string, { atomic: { status: string } }>;
+  firstCapabilities["0x1"]!.atomic.status = "supported";
+  expect(
+    await provider.request({ method: "wallet_getCapabilities", params: [account.address, ["0x1"]] })
+  ).toEqual(capabilities([1]));
+  await expect(
+    second.request({ method: "wallet_getCapabilities", params: [account.address] })
+  ).rejects.toMatchObject({ code: 4100 });
+  await second.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x4cef52" }] });
+  expect(await provider.request({ method: "eth_chainId" })).toBe("0x1");
+  expect(await second.request({ method: "eth_chainId" })).toBe("0x4cef52");
+  second.disconnect();
+  expect(await provider.request({ method: "eth_accounts" })).toEqual([account.address]);
+  expect(host.sign).not.toHaveBeenCalled();
+});
+
+it.each([5042, 84532, 5042002])(
+  "binds a signed transaction and native units to chain %s",
+  async (chainId) => {
+    provider = new ConnectProvider({ chainId }, host);
+    rpc.getChainId.mockResolvedValue(chainId);
+    await connect();
+    const result = await transaction();
+    const signed = rpc.sendRawTransaction.mock.calls[0]![0].serializedTransaction;
+    expect(result).toBe(keccak256(signed));
+    expect(parseTransaction(signed)).toMatchObject({ chainId, value: 1n, gas: 25_200n });
+    expect(host.sign).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: { chainId },
+      }),
+      { address: account.address }
+    );
+    const configured = rpc.createPublicClient.mock.calls[0]![0].chain;
+    expect(configured.nativeCurrency).toMatchObject({
+      symbol: chainId === 84532 ? "ETH" : "USDC",
+      decimals: 18,
+    });
+  }
+);
+
+it("rejects a mismatched Arc RPC and unsupported chain switch before signing", async () => {
+  provider = new ConnectProvider({ chainId: 5042 }, host);
+  await connect();
+  rpc.getChainId.mockResolvedValue(5042002);
+  await expect(transaction()).rejects.toMatchObject({ code: 4901 });
+  await expect(
+    provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x144" }] })
+  ).rejects.toMatchObject({ code: 4902 });
+  expect(await provider.request({ method: "eth_chainId" })).toBe("0x13b2");
+  expect(host.sign).not.toHaveBeenCalled();
+  expect(rpc.sendRawTransaction).not.toHaveBeenCalled();
 });

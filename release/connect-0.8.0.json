@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "kind": "connect-publication",
+  "version": "0.8.0",
+  "packageName": "@ohmywallet/connect",
+  "sourceSha": "80d547fe3aa6a2b41dd0c97225c2d9c477ab605a",
+  "qualificationSha256": "c3185b3c3fd36ad204865b012429aa0e2d751fdce730b5f68ea969ffa9b006be",
+  "artifactPath": "release/connect-0.8.0.tgz",
+  "artifactSha256": "4520a57f6e7030f9c775c4128591fea57beb3766644f6f651d4afa2a35a6fd1f",
+  "artifactIntegrity": "sha512-951bfXAekV2ra7Cyryem3v45clshE/0IqLJ5YijoRTOUallC1+XR7rRF5+DbcxmdCehvhZAleMUd55qWVbDu6w==",
+  "createdAt": "2026-10-22T10:22:47.279Z"
+}

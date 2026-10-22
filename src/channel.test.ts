@@ -161,7 +161,7 @@ describe("IframeChannelBase teardown ownership", () => {
       vi.stubGlobal("clearTimeout", ((timeout: ReturnType<typeof setTimeout>) => {
         if (clearPhase === "after") nativeClearTimeout(timeout);
         throw cancellationError;
-      }) as typeof clearTimeout);
+      }) as unknown as typeof clearTimeout);
       const channel = new TestChannel("https://embed.ohmywallet.xyz", 60_000);
       let settlements = 0;
       const request = channel.request(`${operation}-${clearPhase}`).then(
@@ -324,7 +324,8 @@ describe("IframeChannelBase teardown ownership", () => {
       events.push(`schedule-${scheduledCallbacks.length + 1}`);
       const callback = args[0];
       scheduledCallbacks.push(() => {
-        if (typeof callback === "function") callback(...args.slice(2));
+        if (typeof callback === "function")
+          (callback as (...parameters: unknown[]) => void)(...args.slice(2));
       });
       if (settleDuringExtension) {
         settleDuringExtension = false;
@@ -337,7 +338,7 @@ describe("IframeChannelBase teardown ownership", () => {
       clearCalls += 1;
       events.push(`clear-${clearCalls}`);
       throw new Error("timeout cancellation failed before native clear");
-    }) as typeof clearTimeout);
+    }) as unknown as typeof clearTimeout);
     channel = new TestChannel("https://embed.ohmywallet.xyz", 60_000);
     const first = channel.request("reused-id", 10_000);
 
@@ -378,7 +379,7 @@ describe("IframeChannelBase teardown ownership", () => {
     vi.stubGlobal("setTimeout", (() => {
       scheduleCalls += 1;
       return reusedTimeoutId;
-    }) as typeof setTimeout);
+    }) as unknown as typeof setTimeout);
     vi.stubGlobal("clearTimeout", (() => {
       channel?.resolveRequest("cleanup-settlement", "settled during cleanup");
     }) as typeof clearTimeout);
@@ -526,7 +527,7 @@ describe("IframeChannelBase teardown ownership", () => {
       wrapperCalls += 1;
       originalSetTimeout(...args);
       throw wrapperError;
-    }) as typeof setTimeout);
+    }) as unknown as typeof setTimeout);
     vi.stubGlobal("clearTimeout", (() => {
       cancellationWrapperCalls += 1;
       throw new Error("global timer cancellation replacement failed");
