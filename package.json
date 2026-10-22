@@ -1,6 +1,6 @@
 {
   "name": "@ohmywallet/connect",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "OhMyWallet browser SDK for Embed iframe and optional App WalletConnect connections, EVM signing and transactions",
   "type": "module",
   "main": "./dist/index.js",
