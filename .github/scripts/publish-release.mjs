@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { types as utilTypes } from "node:util";
 
 const packageName = "@ohmywallet/connect";
-const version = "0.8.0";
+const version = "0.8.1";
 const publicRepository = "https://github.com/ohmywallet/connect";
 const publicRepositoryGit = `${publicRepository}.git`;
 const publicWorkflow = ".github/workflows/publish.yml";
@@ -52,10 +52,13 @@ const publishEnvironmentKeys = Object.freeze([
   "GITHUB_REF",
   "GITHUB_REF_NAME",
   "GITHUB_REPOSITORY",
+  "GITHUB_REPOSITORY_ID",
+  "GITHUB_REPOSITORY_OWNER_ID",
   "GITHUB_RUN_ATTEMPT",
   "GITHUB_RUN_ID",
   "GITHUB_SERVER_URL",
   "GITHUB_SHA",
+  "GITHUB_WORKFLOW_REF",
   "HOME",
   "HTTPS_PROXY",
   "HTTP_PROXY",
@@ -64,13 +67,75 @@ const publishEnvironmentKeys = Object.freeze([
   "NPM_CONFIG_CACHE",
   "PATH",
   "RUNNER_ARCH",
+  "RUNNER_ENVIRONMENT",
   "RUNNER_OS",
   "RUNNER_TEMP",
   "TMPDIR",
 ]);
 
+// Diagnostics contain only fixed categories and known public tool codes. Never
+// forward a child message, stderr, command, path, or environment to the runner.
+const failureDiagnostics = new WeakMap();
+const publicToolCodes = new Set([
+  "E2BIG",
+  "E401",
+  "E403",
+  "E404",
+  "E409",
+  "E422",
+  "E429",
+  "E500",
+  "E502",
+  "E503",
+  "E504",
+  "EACCES",
+  "EAI_AGAIN",
+  "EBADENGINE",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EINTEGRITY",
+  "EINVALIDPACKAGENAME",
+  "EINVALIDTAGNAME",
+  "ENEEDAUTH",
+  "ENETUNREACH",
+  "ENOENT",
+  "ENOTFOUND",
+  "EOTP",
+  "EPERM",
+  "EPRIVATE",
+  "EPROVENANCE",
+  "EPUBLISHCONFLICT",
+  "ETIMEDOUT",
+  "EUNSCOPED",
+  "EUNSUPPORTEDPROTOCOL",
+  "EUSAGE",
+]);
+
+function publicFailure(category, { stage, code, exitCode } = {}) {
+  const error = new Error("Public release command failed.");
+  failureDiagnostics.set(error, Object.freeze({ stage, category, code, exitCode }));
+  return error;
+}
+
+async function atStage(stage, operation) {
+  try {
+    return await operation();
+  } catch (error) {
+    const diagnostic = failureDiagnostics.get(error);
+    throw publicFailure(diagnostic?.category ?? "unclassified", { ...diagnostic, stage });
+  }
+}
+
+function commandCode(command, stderr) {
+  if (command !== "npm") return undefined;
+  const match = /^npm (?:error|ERR!) code (E[A-Z0-9_]+)\r?$/mu.exec(stderr);
+  return publicToolCodes.has(match?.[1]) ? match[1] : undefined;
+}
+
 function invalid(label) {
-  return new TypeError(`Invalid ${label}.`);
+  const error = new TypeError(`Invalid ${label}.`);
+  failureDiagnostics.set(error, Object.freeze({ category: "invalid-input" }));
+  return error;
 }
 
 function plainObject(value, label) {
@@ -201,7 +266,7 @@ function safeEnvironment(env) {
 export async function runPublicReleaseCommand(command, args, options = {}) {
   const timeoutMs = options.timeoutMs ?? 10 * 60 * 1000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
-    throw new Error("Public release command failed.");
+    throw publicFailure("invalid-input");
   }
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -223,6 +288,7 @@ export async function runPublicReleaseCommand(command, args, options = {}) {
       if (Buffer.byteLength(next) > limit) {
         exceeded = true;
         child.kill("SIGKILL");
+        return current;
       }
       return next;
     };
@@ -232,14 +298,29 @@ export async function runPublicReleaseCommand(command, args, options = {}) {
     child.stderr.on("data", (chunk) => {
       stderr = append(stderr, chunk, options.stderrLimitBytes ?? 128 * 1024);
     });
-    child.once("error", () => {
+    child.once("error", (error) => {
       clearTimeout(timeout);
-      reject(new Error("Public release command failed."));
+      reject(
+        publicFailure("command-spawn", {
+          code: publicToolCodes.has(error?.code) ? error.code : undefined,
+        })
+      );
     });
     child.once("close", (code) => {
       clearTimeout(timeout);
       if (timedOut || exceeded || code !== 0) {
-        reject(new Error("Public release command failed."));
+        reject(
+          publicFailure(
+            timedOut ? "command-timeout" : exceeded ? "command-output-limit" : "command-exit",
+            {
+              code: timedOut || exceeded ? undefined : commandCode(command, stderr),
+              exitCode:
+                !timedOut && !exceeded && Number.isInteger(code) && code >= 0 && code <= 255
+                  ? code
+                  : undefined,
+            }
+          )
+        );
       } else {
         resolve(Object.freeze({ stdout, stderr, exitCode: code }));
       }
@@ -567,30 +648,29 @@ export async function publishCommittedRelease({
   root,
   operations = createDefaultPublicPublisherOperations({ root }),
 }) {
-  const release = await operations.readRelease();
-  await operations.assertNoAuth();
-  const context = validatePublicWorkflowContext(
-    await operations.readWorkflowContext({ manifest: release.manifest }),
-    release.manifest
+  const release = await atStage("read-release", () => operations.readRelease());
+  await atStage("auth-check", () => operations.assertNoAuth());
+  const context = await atStage("workflow-context", async () =>
+    validatePublicWorkflowContext(
+      await operations.readWorkflowContext({ manifest: release.manifest }),
+      release.manifest
+    )
   );
-  await operations.verifyPayload({ ...release, context });
-  const publication = await operations.readRegistryPublication({
-    manifest: release.manifest,
-    context,
-  });
+  await atStage("payload-check", () => operations.verifyPayload({ ...release, context }));
+  const publication = await atStage("registry-check", () =>
+    operations.readRegistryPublication({ manifest: release.manifest, context })
+  );
   if (publication === null) {
-    await operations.publishNpm({ ...release, context });
+    await atStage("npm-publish", () => operations.publishNpm({ ...release, context }));
     return Object.freeze({
       status: "published",
       version: release.manifest.version,
       commit: context.commit,
     });
   }
-  await operations.verifyExistingPublication({
-    ...release,
-    publication,
-    context,
-  });
+  await atStage("existing-publication-check", () =>
+    operations.verifyExistingPublication({ ...release, publication, context })
+  );
   return Object.freeze({
     status: "already-published",
     version: release.manifest.version,
@@ -598,16 +678,29 @@ export async function publishCommittedRelease({
   });
 }
 
-async function main() {
+export async function runPublicReleaseMain({
+  root = process.cwd(),
+  operations,
+  stdout = process.stdout,
+  stderr = process.stderr,
+} = {}) {
   try {
-    const result = await publishCommittedRelease({ root: process.cwd() });
-    process.stdout.write(`${JSON.stringify(result)}\n`);
-  } catch {
-    process.stderr.write("Connect public publication failed.\n");
-    process.exitCode = 1;
+    const result = await publishCommittedRelease({ root, operations });
+    stdout.write(`${JSON.stringify(result)}\n`);
+    return 0;
+  } catch (error) {
+    const diagnostic = failureDiagnostics.get(error);
+    const fields = [
+      `stage=${diagnostic?.stage ?? "unknown"}`,
+      `category=${diagnostic?.category ?? "unclassified"}`,
+    ];
+    if (diagnostic?.code !== undefined) fields.push(`code=${diagnostic.code}`);
+    if (diagnostic?.exitCode !== undefined) fields.push(`exitCode=${diagnostic.exitCode}`);
+    stderr.write(`Connect public publication failed. ${fields.join(" ")}\n`);
+    return 1;
   }
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
-  await main();
+  process.exitCode = await runPublicReleaseMain();
 }

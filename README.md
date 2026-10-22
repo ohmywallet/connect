@@ -11,6 +11,10 @@ These paths have separate sessions. Neither shares App login, connection permiss
 
 [한국어](./README.ko.md) · [Demo](https://demo.ohmywallet.xyz/connect) · [Public Connect snapshot](https://github.com/ohmywallet/connect)
 
+## 0.8.1 release
+
+This patch corrects public repository metadata and the tag-bound npm provenance publishing environment. The App and Embed APIs and wallet behavior are unchanged.
+
 ## Install
 
 ```sh
