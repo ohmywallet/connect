@@ -11,9 +11,58 @@ These paths have separate sessions. Neither shares App login, connection permiss
 
 [한국어](./README.ko.md) · [Demo](https://demo.ohmywallet.xyz/connect) · [Public Connect snapshot](https://github.com/ohmywallet/connect)
 
-## 0.8.1 release
+## Start with a real connection
 
-This patch corrects public repository metadata and the tag-bound npm provenance publishing environment. The App and Embed APIs and wallet behavior are unchanged.
+- **Managed Safe in App:** [Open the App connection demo](https://demo.ohmywallet.xyz/connect?wallet=app&lang=en). Have a prepared managed Safe on the selected testnet ready. The App demo connects and reads the approved account; it does not sign or transfer funds.
+- **Basic EVM account in your service:** [Open the Embed demo](https://demo.ohmywallet.xyz/connect?wallet=embed&lang=en). This connects a separate basic account, not the managed Safe shown in App.
+
+The demos run on a configured service. Running the same SDK on your own origin has the prerequisites below; installing the package alone does not complete setup.
+
+## Run the single-file React starter
+
+[Download connect-starter.tsx](https://www.ohmywallet.xyz/examples/connect-starter.tsx.txt).
+
+The starter targets an **existing React TypeScript client**, such as a Vite React TypeScript app. It is source to compile in your app, not a standalone HTML file or a browser script URL. No new app scaffold, CSS framework or QR dependency is needed.
+
+1. In your existing client project, install the SDK and its optional App peer:
+
+   ```sh
+   npm install @ohmywallet/connect@0.8.1 @walletconnect/sign-client@^2.23.10
+   ```
+
+2. Save the download as `src/ConnectStarter.tsx`. Replace your existing `src/App.tsx` with:
+
+   ```tsx
+   import ConnectStarter from "./ConnectStarter";
+
+   export default function App() {
+     return <ConnectStarter locale="en" />;
+   }
+   ```
+
+3. Run your existing development command, for example `npm run dev`. Choose **App** or **Embed** and finish its setup:
+
+   | Path  | Before connecting                                                                                                                                                                                                                                                                                                                          |
+   | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+   | App   | Create a project in the [Reown dashboard](https://dashboard.reown.com/) and enter its public 32-character project ID. Prepare a managed Safe on **Base Sepolia** in OhMyWallet App. Preparing the wallet is separate from this example and may require testnet fees.                                                                       |
+   | Embed | [Register your exact origin](mailto:hello@ohmywallet.xyz) with OhMyWallet, including scheme, hostname and port. This includes local development origins; the starter does not automatically allow localhost or arbitrary domains. Permit `https://embed.ohmywallet.xyz` in CSP `frame-src` and allow the independent Vault approval popup. |
+
+4. Click **Connect wallet**. For App, click the generated **Open App to approve** link, approve the connection in App, then return. For Embed, complete the visible Embed/Vault connection flow. Success is the **actual approved address and chain ID**, not opening a link or starting authentication.
+
+The starter uses Base Sepolia (`84532`) and requests only `eth_requestAccounts`. It never requests a signature, submits a transaction, creates a server login session, or restores a connection after reload. Its App link works on the same device. For a QR code on another device, use the complete App demo rather than sending a WalletConnect URI to an external QR service.
+
+It includes cancellation, expiry, disconnect, event unsubscription and unmount cleanup. Old callbacks cannot restore a cancelled session. Pairing links stay in memory and are removed when the connection changes. Do not send them to analytics, logs or persistent storage.
+
+### If connection stops
+
+| Result                                   | Next action                                                                                                                                                                               |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `4001`                                   | The request was declined or cancelled. Reconnect only after another user click.                                                                                                           |
+| Expired link / `4900` with expiry reason | Connect again to create a new pairing. Do not reuse the previous link.                                                                                                                    |
+| `-32602` before App connects             | Check the public WalletConnect project ID. It must contain 32 hexadecimal characters.                                                                                                     |
+| Other failure                            | Check the selected path's setup, registered origin, CSP/popup policy and browser/passkey compatibility. The starter shows a numeric code without printing the raw request or pairing URI. |
+
+For your own App UI, subscribe before requesting accounts and preserve the same lifecycle demonstrated by the starter. The lower-level snippets below describe the APIs; their comments are not a substitute for the runnable connection UI.
 
 ## Install
 
@@ -170,6 +219,10 @@ await disconnect(config);
 ## License
 
 MIT
+
+## 0.8.1 release
+
+This patch corrects public repository metadata and the tag-bound npm provenance publishing environment. The App and Embed APIs and wallet behavior are unchanged.
 
 ## Security / 보안
 
