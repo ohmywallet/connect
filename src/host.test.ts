@@ -377,6 +377,14 @@ function requestsOfType(iframe: FakeIframe, type: string): IframeMessage[] {
 }
 
 describe("IframeHost primary lifecycle and cancellation", () => {
+  it("delegates creation and get only to the fixed frame-capable fee Embed child", async () => {
+    const { host, iframe } = await connectHost();
+    expect(iframe.allow).toBe(
+      "publickey-credentials-get https://embed.ohmywallet.xyz; publickey-credentials-create https://embed.ohmywallet.xyz"
+    );
+    host.destroy();
+  });
+
   it("does not grant ready after an acknowledged initial CONNECT cancellation", async () => {
     const host = new IframeHost();
     const { iframe, result } = await beginPrimaryConnect(host);
@@ -1841,19 +1849,28 @@ describe("IframeHost contentWindow access inventory", () => {
 });
 
 describe("IframeHost relay bootstrap", () => {
-  it("uses the maintained embed relay and a sandbox without WebAuthn delegation by default", async () => {
+  it("delegates fixed create/get to the maintained fee Embed relay without changing its sandbox", async () => {
     expect(DEFAULT_IFRAME_SRC).toBe(EMBED_ORIGIN);
 
     const host = new IframeHost();
     void host.connectWithSignerType({ signerType: "derivation" }).catch(() => undefined);
     const iframe = fakeDocument.iframe!;
 
-    expect(iframe.src).toBe(`${EMBED_ORIGIN}/en`);
+    expect(iframe.src).toBe(`${EMBED_ORIGIN}/en?vault=frame`);
     expect(iframe.referrerPolicy).toBe("no-referrer");
-    expect(iframe.allow).toBe("");
+    expect(iframe.allow).toBe(
+      `publickey-credentials-get ${EMBED_ORIGIN}; publickey-credentials-create ${EMBED_ORIGIN}`
+    );
     expect(iframe.attributes.get("sandbox")).toBe(
       "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
     );
+    host.destroy();
+  });
+
+  it("does not delegate credentials to a custom relay origin", () => {
+    const host = new IframeHost({ iframeSrc: "https://custom.example" });
+    void host.connectWithSignerType({ signerType: "derivation" }).catch(() => undefined);
+    expect(fakeDocument.iframe!.allow).toBe("");
     host.destroy();
   });
 

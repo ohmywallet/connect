@@ -175,7 +175,8 @@ export const CONNECT_CAPABILITIES = Object.freeze({
 export class ProviderRpcError extends Error {
   constructor(
     readonly code: number,
-    message: string
+    message: string,
+    readonly data?: { transactionHash: string; chainId: number }
   ) {
     super(message);
     this.name = "ProviderRpcError";
