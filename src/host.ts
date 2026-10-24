@@ -1118,8 +1118,15 @@ export class IframeHost extends IframeChannelBase implements PublicIframeHost {
     const generation = this.lifecycleGeneration;
     const surface = createHostSurface({
       ...(this.config.container === undefined ? {} : { container: this.config.container }),
-      iframeSrc: `${baseUrl}/${locale}`,
+      // This presentation capability is sent only by the SDK that also delegates
+      // credential get. Published older SDK URLs remain on the popup protocol.
+      iframeSrc: `${baseUrl}/${locale}${["https://embed.ohmywallet.xyz", "http://localhost:3122"].includes(this.iframeOrigin) ? "?vault=frame" : ""}`,
       sandbox: sandboxValue,
+      ...(["https://embed.ohmywallet.xyz", "http://localhost:3122"].includes(this.iframeOrigin)
+        ? {
+            allow: `publickey-credentials-get ${this.iframeOrigin}; publickey-credentials-create ${this.iframeOrigin}`,
+          }
+        : {}),
       onEscape: () => {
         this.cancel();
       },

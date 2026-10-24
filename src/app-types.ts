@@ -2,6 +2,8 @@ import type { SupportedLocale } from "./types";
 
 /** App connection is opt-in. The existing Embed provider remains independent. */
 export interface AppProviderOptions {
+  /** Explicit account intent. Omission keeps the published managed App handoff unchanged. */
+  account?: "managed" | "fee";
   projectId: string;
   chainId?: number;
   metadata: { name: string; description?: string; icons?: readonly string[] };

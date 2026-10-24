@@ -109,3 +109,17 @@ import { createProvider } from "./index";
 import { custom, createWalletClient } from "viem";
 const providerWallet = createWalletClient({ transport: custom(createProvider()) });
 void providerWallet;
+
+import { createConnectProvider } from "./unified";
+const managedWallet = createWalletClient({ transport: custom(createConnectProvider()) });
+createConnectProvider({ account: "fee", transport: "embedded", chainId: 1 });
+createConnectProvider({
+  transport: "walletconnect",
+  projectId: "id",
+  metadata: { name: "My dApp" },
+});
+// @ts-expect-error WalletConnect needs its explicit transport configuration.
+createConnectProvider({ transport: "walletconnect" });
+// @ts-expect-error A custom remote authority is not an account option.
+createConnectProvider({ account: "auto" });
+void managedWallet;

@@ -144,6 +144,79 @@ afterEach(async () => {
 });
 
 describe("App provider lifecycle and pairing UI", () => {
+  it.each(["managed", "fee"] as const)(
+    "binds explicit %s account intent in the encrypted proposal and approval",
+    async (account) => {
+      const value = harness({ options: { ...OPTIONS, account } });
+      value.client.stored.sessionProperties = {
+        "ohmywallet.account": account,
+        "ohmywallet.connect": "1",
+      };
+      const pending = value.provider.request({ method: "eth_requestAccounts" });
+      await flush();
+      expect(value.client.connect.mock.calls[0]![0]).toMatchObject({
+        sessionProperties: value.client.stored.sessionProperties,
+      });
+      expect(value.provider.currentState.pairing?.appUrl).toContain(
+        `&account=${account}&chainId=${CHAIN_ID}`
+      );
+      value.client.approval.resolve(value.client.stored);
+      expect(await pending).toEqual([CHECKSUM_ADDRESS]);
+    }
+  );
+
+  it.each([1, 84532])(
+    "includes the validated requested chain %s as an advisory App hint",
+    async (chainId) => {
+      const value = harness({ options: { ...OPTIONS, account: "managed", chainId } });
+      value.client.stored.sessionProperties = {
+        "ohmywallet.account": "managed",
+        "ohmywallet.connect": "1",
+      };
+      value.client.stored.namespaces.eip155!.chains = [`eip155:${chainId}`];
+      value.client.stored.namespaces.eip155!.accounts = [`eip155:${chainId}:${ADDRESS}`];
+      const pending = value.provider.request({ method: "eth_requestAccounts" });
+      await flush();
+      expect(value.provider.currentState.pairing?.appUrl).toBe(
+        `https://app.ohmywallet.xyz/ko#wc=${encodeURIComponent(URI)}&account=managed&chainId=${chainId}`
+      );
+      expect(value.client.connect.mock.calls[0]![0].requiredNamespaces.eip155.chains).toEqual([
+        `eip155:${chainId}`,
+      ]);
+      value.client.approval.resolve(value.client.stored);
+      expect(await pending).toEqual([CHECKSUM_ADDRESS]);
+    }
+  );
+
+  it.each([
+    undefined,
+    { "ohmywallet.account": "fee", "ohmywallet.connect": "1" },
+    { "ohmywallet.account": "managed", "ohmywallet.connect": "2" },
+  ])(
+    "rejects an approval that does not echo the explicit managed account intent: %o",
+    async (properties) => {
+      const value = harness({ options: { ...OPTIONS, account: "managed" } });
+      value.client.stored.sessionProperties = properties;
+      const pending = value.provider.request({ method: "eth_requestAccounts" });
+      const rejected = expect(pending).rejects.toMatchObject({ code: 4100 });
+      await flush();
+      value.client.approval.resolve(value.client.stored);
+      await rejected;
+      expect(await value.provider.request({ method: "eth_accounts" })).toEqual([]);
+    }
+  );
+
+  it("revokes a live session if its encrypted account intent changes", async () => {
+    const value = harness({ options: { ...OPTIONS, account: "managed" } });
+    value.client.stored.sessionProperties = {
+      "ohmywallet.account": "managed",
+      "ohmywallet.connect": "1",
+    };
+    await connect(value);
+    value.client.stored.sessionProperties["ohmywallet.account"] = "fee";
+    expect(await value.provider.request({ method: "eth_accounts" })).toEqual([]);
+  });
+
   it("does not initialize WalletConnect or restore accounts during construction or passive reads", async () => {
     const { provider, createClient } = harness();
     expect(provider.currentState).toEqual({ status: "idle", chainId: CHAIN_ID, busy: false });

@@ -81,6 +81,9 @@ export class AppProviderRuntime {
       typeof options.metadata.name !== "string" ||
       !options.metadata.name.trim() ||
       options.metadata.name.length > 128 ||
+      (options.account !== undefined &&
+        options.account !== "managed" &&
+        options.account !== "fee") ||
       (options.metadata.description !== undefined &&
         (typeof options.metadata.description !== "string" ||
           options.metadata.description.length > 512)) ||
@@ -229,7 +232,7 @@ export class AppProviderRuntime {
     if (!context || !client) fail(4100, "Connect an App account first");
     try {
       const session = client.session.get(context.topic);
-      const address = sessionAccount(session, this.#state.chainId, this.#now());
+      const address = this.#sessionAccount(session);
       if (
         session.topic !== context.topic ||
         session.pairingTopic !== context.pairingTopic ||
@@ -242,6 +245,15 @@ export class AppProviderRuntime {
       fail(4100, "Wallet session changed; reconnect explicitly");
     }
     return { client, context };
+  }
+  #sessionAccount(session: AppProtocolSession): string {
+    if (
+      this.#options.account !== undefined &&
+      (session.sessionProperties?.["ohmywallet.connect"] !== "1" ||
+        session.sessionProperties?.["ohmywallet.account"] !== this.#options.account)
+    )
+      fail(4100, "Wallet account intent changed; reconnect explicitly");
+    return sessionAccount(session, this.#state.chainId, this.#now());
   }
   #register(client: AppSignClient) {
     for (const event of [
@@ -259,6 +271,7 @@ export class AppProviderRuntime {
             namespaces?: AppProtocolSession["namespaces"];
             chainId?: string;
             event?: { name?: string; data?: unknown };
+            sessionProperties?: Record<string, string>;
           };
         };
         if (payload.topic !== this.#context.topic) return;
@@ -271,13 +284,14 @@ export class AppProviderRuntime {
           const { context } = this.#current(eventEpoch);
           if (event === "session_update") {
             const session = client.session.get(context.topic);
+            if (payload.params?.sessionProperties !== undefined)
+              this.#sessionAccount({
+                ...session,
+                sessionProperties: payload.params.sessionProperties,
+              });
             if (
               !sameAddress(
-                sessionAccount(
-                  { ...session, namespaces: payload.params?.namespaces ?? {} },
-                  this.#state.chainId,
-                  this.#now()
-                ),
+                this.#sessionAccount({ ...session, namespaces: payload.params?.namespaces ?? {} }),
                 context.address
               )
             )
@@ -367,6 +381,14 @@ export class AppProviderRuntime {
           events: [...APP_EVENTS],
         },
       },
+      ...(this.#options.account === undefined
+        ? {}
+        : {
+            sessionProperties: {
+              "ohmywallet.account": this.#options.account,
+              "ohmywallet.connect": "1",
+            },
+          }),
     });
     const approval = connection.approval();
     let info: ReturnType<typeof pairingInfo>;
@@ -381,21 +403,21 @@ export class AppProviderRuntime {
     this.#expireAt(info.expiresAt, epoch);
     const pairing = Object.freeze({
       uri: info.uri,
-      appUrl: `https://app.ohmywallet.xyz/${this.#options.locale ?? "en"}#wc=${encodeURIComponent(info.uri)}`,
+      appUrl: `https://app.ohmywallet.xyz/${this.#options.locale ?? "en"}#wc=${encodeURIComponent(info.uri)}${this.#options.account === undefined ? "" : `&account=${this.#options.account}&chainId=${this.#state.chainId}`}`,
       expiresAt: info.expiresAt,
     });
     this.#stateChanged({ status: "pairing", chainId: this.#state.chainId, busy: true, pairing });
     const session = await approval;
     try {
       this.#alive(epoch);
-      const address = sessionAccount(session, this.#state.chainId, this.#now());
+      const address = this.#sessionAccount(session);
       if (session.pairingTopic !== info.topic) fail(4100, "Wallet pairing changed");
       const persisted = client.session.get(session.topic);
       if (
         persisted.topic !== session.topic ||
         persisted.pairingTopic !== session.pairingTopic ||
         persisted.expiry !== session.expiry ||
-        !sameAddress(sessionAccount(persisted, this.#state.chainId, this.#now()), address)
+        !sameAddress(this.#sessionAccount(persisted), address)
       )
         fail(4100, "Wallet session changed");
       this.#context = {

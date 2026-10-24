@@ -1,6 +1,6 @@
 {
   "name": "@ohmywallet/connect",
-  "version": "0.8.1",
+  "version": "0.9.1",
   "description": "OhMyWallet browser SDK for Embed iframe and optional App WalletConnect connections, EVM signing and transactions",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,6 +22,10 @@
     "./app-wagmi": {
       "import": "./dist/app-wagmi.js",
       "types": "./dist/app-wagmi.d.ts"
+    },
+    "./unified": {
+      "import": "./dist/unified.js",
+      "types": "./dist/unified.d.ts"
     }
   },
   "files": [

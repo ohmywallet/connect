@@ -1,5 +1,50 @@
 # @ohmywallet/connect
 
+## Unified connection
+
+> Available in SDK `0.9.1`. Use `/unified` for managed or fee accounts with embedded or WalletConnect transport. Existing root and App entrypoint defaults remain compatible with `0.8.1`.
+
+```sh
+npm install @ohmywallet/connect@0.9.1
+```
+
+One OhMyWallet Connect EIP-1193 interface separates **account** from **connection method**. Defaults are `account: "managed"` and `transport: "embedded"`. A fee account requires an explicit `account: "fee"` choice.
+
+```ts
+import { createConnectProvider } from "@ohmywallet/connect/unified";
+
+const provider = createConnectProvider({ chainId: 84532 });
+provider.on("stateChanged", (state) => {
+  // state.account / state.transport / state.address / state.chainId
+  // WalletConnect: show only the live state.pairing link or QR.
+});
+// Connect button only; construction, render and reconnect do not authenticate.
+await provider.request({ method: "eth_requestAccounts" });
+// Logout: await provider.disconnect(); unmount: provider.destroy();
+```
+
+| Option      | Default    | Choices                         |
+| ----------- | ---------- | ------------------------------- |
+| `account`   | `managed`  | `managed` or `fee`              |
+| `transport` | `embedded` | `embedded` or `walletconnect`   |
+| `chainId`   | `1`        | Requested supported EVM network |
+
+For WalletConnect, add `projectId` and `metadata` to the same factory. The user approves the selected account in App. Managed and fee accounts have different addresses. Missing setup, authentication failure or service incompatibility never silently switches accounts. Disconnect and reconnect to change account or managed-wallet network.
+
+The 0.9.1 Embed authenticates and signs inside the service’s connection sheet: **dApp → Embed iframe → Vault iframe**. It requires a registered service origin, CSP support and delegated `publickey-credentials-get`. New fee-wallet passkey creation also stays in that sheet; any required follow-up PRF authentication targets only the newly created passkey after another explicit click. Failed inline authentication never opens a fallback popup. The current managed Embed connection validates a fee wallet and therefore requires PRF support; this does not mean Safe signing itself requires PRF. Prepare a managed wallet on the requested network first. This connection screen does not automatically create a wallet or move funds.
+
+In a new browser with no verified public-key record, managed Embed asks you to confirm the same passkey once more. The second confirmation targets only that credential, requests no PRF, and verifies its public key before checking the prepared Safe. Later connections and individual sends use one native authentication each. Confirmation never starts automatically, and failed proof never switches to a fee account. PRF-capable passkeys and browsers remain required for connection and payer relay.
+
+The SDK delegates GET only to the fixed Embed, which delegates it to the fixed Vault. If your service sends a Permissions-Policy header, permit `publickey-credentials-get=(self "https://embed.ohmywallet.xyz")`. To offer new fee-wallet creation, also permit `publickey-credentials-create=(self "https://embed.ohmywallet.xyz")`; managed-only integrations may keep CREATE disabled. New fee SDK frames explicitly delegate CREATE, while managed and legacy frames do not. Vault grants it only to the service-bound creation document, separate from its signing documents. CSP `frame-src` must permit `https://embed.ohmywallet.xyz`. The SDK sets the iframe `allow` attribute itself. A denial in any ancestor blocks authentication. Browser and passkey PRF support still vary; iframe support is not a universal compatibility guarantee.
+
+Both account choices use familiar EIP-1193 requests and viem `custom(provider)`. Managed signatures are variable-length contract signatures and require ERC-1271 verification. EOA-only services and permits may be incompatible. Read RPC requests only query public data; they do not connect or authorize a fee account.
+
+A transaction hash does not mean execution success. If `-32003` includes `error.data.transactionHash`, inspect it on the specified network; never automatically resubmit an uncertain transaction. Cancellation, expiry, origin, request ID, account and chain mismatches fail closed. Unit checks are not physical-device authentication or an independent audit.
+
+[0.9.1 React starter](https://www.ohmywallet.xyz/examples/connect-starter.tsx.txt) uses the unified API from npm `0.9.1`. The 0.8.1 guide below uses a separate compatibility starter.
+
+## Published 0.8.1 APIs (compatibility preserved)
+
 Connect OhMyWallet to your dApp with an EIP-1193 Provider or a wagmi connector. Choose the experience your service needs:
 
 | Connection                                      | User experience                                                          | Account                                                         |
@@ -20,7 +65,7 @@ The demos run on a configured service. Running the same SDK on your own origin h
 
 ## Run the single-file React starter
 
-[Download connect-starter.tsx](https://www.ohmywallet.xyz/examples/connect-starter.tsx.txt).
+[Download connect-starter.tsx](https://www.ohmywallet.xyz/examples/connect-starter-0.8.1.tsx.txt).
 
 The starter targets an **existing React TypeScript client**, such as a Vite React TypeScript app. It is source to compile in your app, not a standalone HTML file or a browser script URL. No new app scaffold, CSS framework or QR dependency is needed.
 
@@ -219,6 +264,10 @@ await disconnect(config);
 ## License
 
 MIT
+
+## 0.9.1 release
+
+Adds the `/unified` EIP-1193 entrypoint with managed accounts by default, optional fee accounts, and embedded or WalletConnect transport. New embedded connections, passkey creation, recovery and supported signing stay in the scoped Vault iframe. The fee-wallet recovery confirmation displays the requesting service origin before passkey authentication. Legacy entrypoints keep their established account defaults.
 
 ## 0.8.1 release
 

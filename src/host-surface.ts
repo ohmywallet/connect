@@ -2,6 +2,8 @@ export interface HostSurfaceOptions {
   container?: HTMLElement;
   iframeSrc: string;
   sandbox: string;
+  /** Fixed credential delegation for the registered Embed transport only. */
+  allow?: string;
   onEscape(): void;
   onDisconnect(): void;
 }
@@ -1298,6 +1300,7 @@ class BrowserHostSurface implements HostSurface {
       border: none;
     `;
     iframe.setAttribute("sandbox", options.sandbox);
+    if (options.allow !== undefined) iframe.allow = options.allow;
 
     iframeContainer.appendChild(iframe);
     overlay.appendChild(iframeContainer);

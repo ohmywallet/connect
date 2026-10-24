@@ -10,11 +10,14 @@ export const CONNECT_FIXED_PACK_FILES = Object.freeze([
   "dist/app.js",
   "dist/index.d.ts",
   "dist/index.js",
+  "dist/unified.d.ts",
+  "dist/unified.js",
   "dist/wagmi.d.ts",
   "dist/wagmi.js",
   "package.json",
 ]);
-export const CONNECT_PACK_FILE_COUNT = CONNECT_FIXED_PACK_FILES.length + 2;
+export const CONNECT_PACK_FILE_COUNT = CONNECT_FIXED_PACK_FILES.length + 3;
+const appTypesDeclarationChunk = /^dist\/app-types-[A-Za-z0-9_-]{8}\.d\.ts$/u;
 const providerDeclarationChunk = /^dist\/provider-[A-Za-z0-9_-]{8}\.d\.ts$/u;
 const typesDeclarationChunk = /^dist\/types-[A-Za-z0-9_-]{8}\.d\.ts$/u;
 
@@ -22,6 +25,7 @@ export function isConnectPackFile(file) {
   return (
     typeof file === "string" &&
     (CONNECT_FIXED_PACK_FILES.includes(file) ||
+      appTypesDeclarationChunk.test(file) ||
       providerDeclarationChunk.test(file) ||
       typesDeclarationChunk.test(file))
   );
@@ -58,6 +62,7 @@ export function validateConnectPackFiles(value, { prefix = "", ordered = true } 
     new Set(files).size !== CONNECT_PACK_FILE_COUNT ||
     files.some((f) => !isConnectPackFile(f)) ||
     CONNECT_FIXED_PACK_FILES.some((f) => !files.includes(f)) ||
+    files.filter((f) => appTypesDeclarationChunk.test(f)).length !== 1 ||
     files.filter((f) => providerDeclarationChunk.test(f)).length !== 1 ||
     files.filter((f) => typesDeclarationChunk.test(f)).length !== 1
   )

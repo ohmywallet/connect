@@ -1,5 +1,50 @@
 # @ohmywallet/connect
 
+## 통합 연결
+
+> SDK `0.9.1`부터 `/unified`에서 관리 지갑·수수료 지갑과 embedded·WalletConnect 연결을 선택할 수 있습니다. 기존 root·App 진입점의 기본값은 `0.8.1`과 호환됩니다.
+
+```sh
+npm install @ohmywallet/connect@0.9.1
+```
+
+OhMyWallet Connect는 하나의 EIP-1193 인터페이스에서 **계정**과 **연결 방식**을 따로 선택합니다. 기본값은 `account: "managed"`, `transport: "embedded"`입니다. 수수료 지갑은 명시적으로 `account: "fee"`를 선택합니다.
+
+```ts
+import { createConnectProvider } from "@ohmywallet/connect/unified";
+
+const provider = createConnectProvider({ chainId: 84532 });
+provider.on("stateChanged", (state) => {
+  // state.account / state.transport / state.address / state.chainId
+  // WalletConnect: 유효한 state.pairing 링크·QR만 표시합니다.
+});
+// 연결 버튼에서만 실행합니다. 생성·렌더링·자동 재연결은 인증을 시작하지 않습니다.
+await provider.request({ method: "eth_requestAccounts" });
+// 종료: await provider.disconnect(); 화면 해제: provider.destroy();
+```
+
+| 옵션        | 기본값     | 선택                            |
+| ----------- | ---------- | ------------------------------- |
+| `account`   | `managed`  | `managed` 또는 `fee`            |
+| `transport` | `embedded` | `embedded` 또는 `walletconnect` |
+| `chainId`   | `1`        | 요청할 지원 EVM 네트워크        |
+
+WalletConnect를 선택하면 같은 factory에 `projectId`와 `metadata`를 추가합니다. App에서 선택 계정의 연결을 명시적으로 승인합니다. 수수료·관리 계정은 서로 다른 주소이며, 미준비·인증 실패·서비스 미호환 때 다른 지갑으로 자동 대체하지 않습니다. 계정 또는 관리 지갑 네트워크 변경은 연결 해제 후 재연결합니다.
+
+0.9.1 Embed는 **dApp → Embed iframe → Vault iframe**으로 서비스의 연결 시트 안에서 인증·서명합니다. 등록된 서비스 origin·CSP·`publickey-credentials-get` 위임이 필요합니다. 수수료 지갑의 새 패스키 생성도 같은 시트에서 진행합니다. 추가 PRF 인증이 필요하면 사용자가 다시 확인을 누른 뒤 방금 만든 패스키 하나만 인증합니다. iframe 인증 실패 때 팝업으로 자동 전환하지 않습니다. 관리 Embed의 현재 연결은 수수료 지갑 검증을 포함하므로 PRF 지원이 필요합니다. Safe의 서명 모델 자체가 PRF를 요구한다는 뜻은 아닙니다. 관리 지갑은 요청 네트워크에 미리 준비되어 있어야 하며, 이 연결 화면에서 자동 생성하거나 자금을 옮기지 않습니다.
+
+검증된 공개키 기록이 없는 새 브라우저에서는 같은 패스키를 한 번 더 확인합니다. 두 번째 확인은 선택한 패스키 하나만 지정하고 PRF 없이 공개키를 검증한 뒤, 준비된 Safe 상태를 확인합니다. 이후 연결과 개별 송금은 각각 native 인증 한 번을 사용합니다. 추가 확인을 자동 시작하거나 검증 실패 시 수수료 계정으로 바꾸지 않습니다. 연결과 수수료 지갑을 통한 제출에는 여전히 패스키와 브라우저의 PRF 지원이 필요합니다.
+
+SDK는 고정 Embed에만 GET을 위임하고, Embed는 고정 Vault에만 위임합니다. 서비스가 Permissions-Policy 헤더를 제공하면 `publickey-credentials-get=(self "https://embed.ohmywallet.xyz")`를 허용합니다. 수수료 지갑 신규 생성을 제공할 때는 `publickey-credentials-create=(self "https://embed.ohmywallet.xyz")`도 허용합니다. 관리 지갑 전용 서비스는 CREATE를 차단해도 됩니다. 새 fee SDK 프레임만 CREATE를 명시적으로 위임하며 관리·구형 프레임에는 위임하지 않습니다. Vault도 등록 서비스에 묶인 전용 생성 문서에서만 CREATE를 허용하고 서명 문서와 구분합니다. CSP `frame-src`에는 `https://embed.ohmywallet.xyz`가 필요하며 iframe `allow`는 SDK가 설정합니다. 상위 프레임 중 하나라도 차단하면 인증할 수 없습니다. 브라우저·패스키의 PRF 지원 차이가 있으므로 모든 환경의 호환성을 보장하지 않습니다.
+
+두 계정 모두 익숙한 EIP-1193 요청과 viem `custom(provider)`를 사용합니다. 관리 서명은 가변 길이 컨트랙트 서명이며 ERC-1271로 검증해야 합니다. EOA 전용 permit·서비스는 호환되지 않을 수 있습니다. 읽기 RPC는 수동적인 공개 조회만 수행하며, 수수료 지갑 연결이나 서명 권한을 얻지 않습니다.
+
+거래 해시를 받았어도 실행 성공은 아닙니다. `-32003`의 `error.data.transactionHash`가 있으면 해당 네트워크에서 조회하고, 결과가 불확실한 거래를 자동 재전송하지 않습니다. 취소·만료·출처·요청 ID·계정·체인 불일치는 실패로 닫습니다. 실기기 인증 완료나 독립 감사를 이 구현의 단위 검사 결과로 주장하지 않습니다.
+
+[0.9.1 React 스타터](https://www.ohmywallet.xyz/examples/connect-starter.tsx.txt)는 npm `0.9.1`의 통합 API를 사용합니다. 아래 0.8.1 가이드는 별도의 호환 스타터를 사용합니다.
+
+## 발행된 0.8.1 API (호환 유지)
+
 EIP-1193 Provider 또는 wagmi 커넥터로 dApp에 OhMyWallet을 연결하세요. 서비스에 맞는 연결 방식을 선택할 수 있습니다.
 
 | 연결 방식                                       | 사용자 경험                                              | 연결 계정                                                          |
@@ -20,7 +65,7 @@ EIP-1193 Provider 또는 wagmi 커넥터로 dApp에 OhMyWallet을 연결하세�
 
 ## 단일 파일 React 스타터 실행
 
-[connect-starter.tsx 다운로드](https://www.ohmywallet.xyz/examples/connect-starter.tsx.txt).
+[connect-starter.tsx 다운로드](https://www.ohmywallet.xyz/examples/connect-starter-0.8.1.tsx.txt).
 
 Vite의 React TypeScript 프로젝트처럼 **기존 React TypeScript 클라이언트**에 넣어 실행하는 소스입니다. 독립 HTML 파일이나 브라우저에서 직접 불러오는 스크립트 URL이 아닙니다. 새 앱 구조·CSS 프레임워크·QR 의존성은 필요하지 않습니다.
 
@@ -219,6 +264,10 @@ await disconnect(config);
 ## 라이선스
 
 MIT
+
+## 0.9.1 릴리스
+
+관리 지갑을 기본으로 제공하는 `/unified` EIP-1193 진입점을 추가했습니다. 수수료 지갑과 embedded·WalletConnect 연결을 선택할 수 있으며, 새 임베드 연결·패스키 생성·복구·지원 서명은 범위가 제한된 Vault iframe에서 이어집니다. 수수료 지갑 복구 시 패스키 인증 전에 요청 서비스 출처를 확인할 수 있습니다. 기존 진입점의 계정 기본값은 유지합니다.
 
 ## 0.8.1 릴리스
 

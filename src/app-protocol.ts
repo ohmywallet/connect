@@ -11,6 +11,7 @@ export const APP_METHODS = Object.freeze([
 ] as const);
 export const APP_EVENTS = Object.freeze(["accountsChanged", "chainChanged"]);
 export interface AppProtocolSession {
+  sessionProperties?: Record<string, string>;
   topic: string;
   pairingTopic: string;
   expiry: number;
@@ -24,6 +25,7 @@ export type AppProtocolEvent =
 export interface AppSignClient {
   connect(params: {
     requiredNamespaces: { eip155: { chains: string[]; methods: string[]; events: string[] } };
+    sessionProperties?: Record<string, string>;
   }): Promise<{ uri?: string; approval(): Promise<AppProtocolSession> }>;
   request(params: {
     topic: string;
