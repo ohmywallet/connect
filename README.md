@@ -5,7 +5,7 @@
 > Available in SDK `0.9.1`. Use `/unified` for managed or fee accounts with embedded or WalletConnect transport. Existing root and App entrypoint defaults remain compatible with `0.8.1`.
 
 ```sh
-npm install @ohmywallet/connect@0.9.1
+npm install @ohmywallet/connect@0.9.2
 ```
 
 One OhMyWallet Connect EIP-1193 interface separates **account** from **connection method**. Defaults are `account: "managed"` and `transport: "embedded"`. A fee account requires an explicit `account: "fee"` choice.
@@ -41,7 +41,7 @@ Both account choices use familiar EIP-1193 requests and viem `custom(provider)`.
 
 A transaction hash does not mean execution success. If `-32003` includes `error.data.transactionHash`, inspect it on the specified network; never automatically resubmit an uncertain transaction. Cancellation, expiry, origin, request ID, account and chain mismatches fail closed. Unit checks are not physical-device authentication or an independent audit.
 
-[0.9.1 React starter](https://www.ohmywallet.xyz/examples/connect-starter.tsx.txt) uses the unified API from npm `0.9.1`. The 0.8.1 guide below uses a separate compatibility starter.
+The [hosted 0.9.1 React starter](https://www.ohmywallet.xyz/examples/connect-starter.tsx.txt) demonstrates the same unified API; install npm `0.9.2` to use the updated sheet presentation. The 0.8.1 guide below uses a separate compatibility starter.
 
 ## Published 0.8.1 APIs (compatibility preserved)
 
@@ -264,6 +264,10 @@ await disconnect(config);
 ## License
 
 MIT
+
+## 0.9.2 release
+
+Embedded connections use the same bottom-sheet presentation on desktop and mobile. The supported embedded Vault operations remain inside their scoped child iframe; this patch does not add new signing authority or automatically switch to a popup. Existing API and account defaults are unchanged. Applications must update their installed SDK to receive this presentation change.
 
 ## 0.9.1 release
 

@@ -1188,15 +1188,14 @@ function bindSurfacePresentation(
   const mobile = view.matchMedia("(max-width: 639px)");
   const reducedMotion = view.matchMedia("(prefers-reduced-motion: reduce)");
   const update = () => {
-    overlay.style.alignItems = mobile.matches ? "flex-end" : "center";
+    overlay.style.alignItems = "flex-end";
     overlay.style.transition = reducedMotion.matches ? "none" : "opacity 0.2s ease";
     panel.style.maxWidth = mobile.matches ? "100%" : "440px";
     panel.style.height = mobile.matches
       ? "min(760px, calc(100dvh - max(16px, env(safe-area-inset-top))))"
       : "min(700px, calc(100dvh - 48px))";
-    panel.style.borderRadius = mobile.matches
-      ? "var(--omw-ui-radius-dialog, 24px) var(--omw-ui-radius-dialog, 24px) 0 0"
-      : "var(--omw-ui-radius-dialog, 24px)";
+    panel.style.borderRadius =
+      "var(--omw-ui-radius-dialog, 24px) var(--omw-ui-radius-dialog, 24px) 0 0";
   };
   const release = () => {
     try {
@@ -1266,7 +1265,7 @@ class BrowserHostSurface implements HostSurface {
       height: 100dvh;
       background: rgba(0, 0, 0, 0.6);
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       justify-content: center;
       z-index: 99999;
       opacity: 0;
@@ -1283,7 +1282,7 @@ class BrowserHostSurface implements HostSurface {
       height: min(700px, calc(100vh - 48px));
       height: min(700px, calc(100dvh - 48px));
       background: transparent;
-      border-radius: var(--omw-ui-radius-dialog, 24px);
+      border-radius: var(--omw-ui-radius-dialog, 24px) var(--omw-ui-radius-dialog, 24px) 0 0;
       overflow: hidden;
       box-shadow: none;
       position: relative;

@@ -5,7 +5,7 @@
 > SDK `0.9.1`부터 `/unified`에서 관리 지갑·수수료 지갑과 embedded·WalletConnect 연결을 선택할 수 있습니다. 기존 root·App 진입점의 기본값은 `0.8.1`과 호환됩니다.
 
 ```sh
-npm install @ohmywallet/connect@0.9.1
+npm install @ohmywallet/connect@0.9.2
 ```
 
 OhMyWallet Connect는 하나의 EIP-1193 인터페이스에서 **계정**과 **연결 방식**을 따로 선택합니다. 기본값은 `account: "managed"`, `transport: "embedded"`입니다. 수수료 지갑은 명시적으로 `account: "fee"`를 선택합니다.
@@ -41,7 +41,7 @@ SDK는 고정 Embed에만 GET을 위임하고, Embed는 고정 Vault에만 위�
 
 거래 해시를 받았어도 실행 성공은 아닙니다. `-32003`의 `error.data.transactionHash`가 있으면 해당 네트워크에서 조회하고, 결과가 불확실한 거래를 자동 재전송하지 않습니다. 취소·만료·출처·요청 ID·계정·체인 불일치는 실패로 닫습니다. 실기기 인증 완료나 독립 감사를 이 구현의 단위 검사 결과로 주장하지 않습니다.
 
-[0.9.1 React 스타터](https://www.ohmywallet.xyz/examples/connect-starter.tsx.txt)는 npm `0.9.1`의 통합 API를 사용합니다. 아래 0.8.1 가이드는 별도의 호환 스타터를 사용합니다.
+[기존 0.9.1 React 스타터](https://www.ohmywallet.xyz/examples/connect-starter.tsx.txt)도 같은 통합 API를 사용합니다. 변경된 시트 화면을 적용하려면 npm `0.9.2`를 설치해주세요. 아래 0.8.1 가이드는 별도의 호환 스타터를 사용합니다.
 
 ## 발행된 0.8.1 API (호환 유지)
 
@@ -264,6 +264,10 @@ await disconnect(config);
 ## 라이선스
 
 MIT
+
+## 0.9.2 릴리스
+
+데스크톱과 모바일의 임베디드 연결 화면을 같은 하단 시트 형태로 통일합니다. 지원되는 임베디드 Vault 작업은 기존 범위의 자식 iframe 안에서 진행하며, 새 서명 권한이나 자동 팝업 전환을 추가하지 않습니다. API와 지갑 기본값은 그대로입니다. 이 화면 변경을 적용하려면 연결하는 앱도 설치한 SDK를 업데이트해야 합니다.
 
 ## 0.9.1 릴리스
 

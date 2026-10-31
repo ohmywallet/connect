@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { types as utilTypes } from "node:util";
 
 const packageName = "@ohmywallet/connect";
-const version = "0.9.1";
+const version = "0.9.2";
 const publicRepository = "https://github.com/ohmywallet/connect";
 const publicRepositoryGit = `${publicRepository}.git`;
 const publicWorkflow = ".github/workflows/publish.yml";
