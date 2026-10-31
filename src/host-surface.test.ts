@@ -9,7 +9,16 @@ import {
 
 class FakeElement {
   readonly children: FakeElement[] = [];
-  readonly style = { cssText: "", opacity: "", pointerEvents: "" };
+  readonly style = {
+    cssText: "",
+    opacity: "",
+    pointerEvents: "",
+    alignItems: "",
+    maxWidth: "",
+    height: "",
+    borderRadius: "",
+    transition: "",
+  };
   readonly attributes = new Map<string, string>();
   readonly focus = vi.fn(() => {
     if (this.isConnected) this.ownerDocument.focusElement(this);
@@ -288,7 +297,7 @@ function mediaPreference(initial: boolean) {
   };
 }
 
-it("keeps the same active iframe and focus across viewport and motion changes, then releases media listeners", () => {
+it("keeps the active bottom-sheet iframe and focus across viewport and motion changes, then releases media listeners", () => {
   const mobile = mediaPreference(true);
   const reducedMotion = mediaPreference(false);
   fakeDocument.defaultView = {
@@ -300,9 +309,23 @@ it("keeps the same active iframe and focus across viewport and motion changes, t
   surface.show(initiator as unknown as Element);
   const iframe = surface.iframe;
   const overlay = overlayOf(surface);
+  const panel = (iframe as unknown as FakeElement).parentElement!;
   const focusCalls = (iframe as unknown as FakeIframe).focus.mock.calls.length;
+  expect(overlay.style.alignItems).toBe("flex-end");
+  expect(panel.style.maxWidth).toBe("100%");
+  expect(panel.style.height).toContain("safe-area-inset-top");
+  expect(panel.style.borderRadius).toBe(
+    "var(--omw-ui-radius-dialog, 24px) var(--omw-ui-radius-dialog, 24px) 0 0"
+  );
   mobile.change(false);
   reducedMotion.change(true);
+  expect(overlay.style.alignItems).toBe("flex-end");
+  expect(panel.style.maxWidth).toBe("440px");
+  expect(panel.style.height).toBe("min(700px, calc(100dvh - 48px))");
+  expect(panel.style.borderRadius).toBe(
+    "var(--omw-ui-radius-dialog, 24px) var(--omw-ui-radius-dialog, 24px) 0 0"
+  );
+  expect(overlay.style.transition).toBe("none");
   expect(surface.iframe).toBe(iframe);
   expect(overlayOf(surface)).toBe(overlay);
   expect(fakeDocument.activeElement).toBe(iframe);
