@@ -89,6 +89,46 @@ it("preserves managed rejection instead of falling back to a fee account", async
   expect(provider.currentState).toMatchObject({ account: "managed", status: "idle", busy: false });
   provider.destroy();
 });
+it.each(["managed", "fee"] as const)(
+  "selects isolated development for %s without changing the account kind",
+  (account) => {
+    const provider = createConnectProvider({ environment: "development", account });
+    expect(fixture.factories[account]).toHaveBeenCalledExactlyOnceWith({
+      chainId: 84532,
+      hostConfig: { environment: "development" },
+    });
+    expect(provider.currentState).toMatchObject({ account, transport: "embedded", chainId: 84532 });
+    expect(fixture.factories.app).not.toHaveBeenCalled();
+    expect(adapter.request).not.toHaveBeenCalled();
+    provider.destroy();
+  }
+);
+it.each([
+  { environment: "staging" },
+  { environment: "development", chainId: 1 },
+  { environment: "development", chainId: 8453 },
+  {
+    environment: "development",
+    transport: "walletconnect",
+    projectId: "id",
+    metadata: { name: "dApp" },
+  },
+  { hostConfig: { environment: "development" } },
+])("rejects invalid development configuration before selecting a transport: %o", (options) => {
+  expect(() => createConnectProvider(options as UnifiedConnectOptions)).toThrow();
+  for (const factory of Object.values(fixture.factories)) expect(factory).not.toHaveBeenCalled();
+});
+it("keeps development public RPC reads on Base Sepolia without creating a production host", async () => {
+  const provider = createConnectProvider({ environment: "development" });
+  adapter.request.mockResolvedValueOnce("0x10");
+  await expect(provider.request({ method: "eth_blockNumber" })).resolves.toBe("0x10");
+  expect(fixture.factories.fee).toHaveBeenCalledExactlyOnceWith({
+    chainId: 84532,
+    hostConfig: { environment: "development" },
+  });
+  expect(provider.currentState.address).toBeUndefined();
+  provider.destroy();
+});
 it("does not accept a late successful result after cancellation", async () => {
   let resolve!: (value: unknown) => void;
   adapter.request.mockImplementationOnce(

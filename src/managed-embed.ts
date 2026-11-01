@@ -3,6 +3,12 @@ import { APP_CHAIN_IDS, sameAddress } from "./app-protocol";
 import { ProviderRpcError } from "./provider";
 import { createHostSurface, type HostSurface } from "./host-surface";
 import type { IframeHostConfig } from "./types";
+import {
+  DEVELOPMENT_CHAIN_ID,
+  DEVELOPMENT_EMBED_ORIGIN,
+  connectEnvironment,
+  resolveEmbedConfig,
+} from "./deployment";
 
 type Listener = (value: unknown) => void;
 type Event = "accountsChanged" | "chainChanged" | "connect" | "disconnect";
@@ -63,13 +69,20 @@ export class ManagedEmbedProvider {
   #initTimeout?: ReturnType<typeof setTimeout>;
 
   constructor(options: { chainId?: number; hostConfig?: IframeHostConfig } = {}) {
-    this.#chainId = options.chainId ?? 1;
+    const development = connectEnvironment(options.hostConfig?.environment) === "development";
+    this.#chainId = options.chainId ?? (development ? DEVELOPMENT_CHAIN_ID : 1);
     if (!(APP_CHAIN_IDS as readonly number[]).includes(this.#chainId))
       fail(4902, "Unsupported managed network");
-    this.#config = { ...options.hostConfig };
-    const url = new URL(this.#config.iframeSrc ?? "https://embed.ohmywallet.xyz");
+    if (development && this.#chainId !== DEVELOPMENT_CHAIN_ID)
+      fail(4902, "Development Connect supports only Base Sepolia");
+    this.#config = resolveEmbedConfig(options.hostConfig);
+    const url = new URL(this.#config.iframeSrc!);
     if (
-      !["https://embed.ohmywallet.xyz", "http://localhost:3122"].includes(url.origin) ||
+      !(
+        development
+          ? [DEVELOPMENT_EMBED_ORIGIN]
+          : ["https://embed.ohmywallet.xyz", "http://localhost:3122"]
+      ).includes(url.origin) ||
       url.username ||
       url.password ||
       url.pathname !== "/" ||

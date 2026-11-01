@@ -29,6 +29,7 @@ import {
   baseSepolia,
 } from "viem/chains";
 import { IframeHost } from "./index";
+import { DEVELOPMENT_CHAIN_ID, connectEnvironment } from "./deployment";
 import type {
   IframeHostConfig,
   PrimaryConnectResult,
@@ -237,10 +238,16 @@ export class ConnectProvider {
   #epoch = 0;
   #busy = false;
   #destroyed = false;
+  readonly #development: boolean;
   #listeners = new Map<Event, Set<Listener>>();
   constructor(options: ConnectProviderOptions = {}, host?: Host) {
-    const chain = chains.find((c) => c.id === (options.chainId ?? mainnet.id));
+    this.#development = connectEnvironment(options.hostConfig?.environment) === "development";
+    const chain = chains.find(
+      (c) => c.id === (options.chainId ?? (this.#development ? DEVELOPMENT_CHAIN_ID : mainnet.id))
+    );
     if (!chain) throw new ProviderRpcError(4902, "Unsupported chain");
+    if (this.#development && chain.id !== DEVELOPMENT_CHAIN_ID)
+      throw new ProviderRpcError(4902, "Development Connect supports only Base Sepolia");
     this.#chain = chain;
     this.#host = host ?? new IframeHost(options.hostConfig);
   }
@@ -296,12 +303,14 @@ export class ConnectProvider {
       const requestedAccount = address(params[0]);
       if (!this.#account || requestedAccount.toLowerCase() !== this.#account.toLowerCase())
         return fail(4100, "Account not authorized");
-      let selected = chains;
+      let selected = this.#development
+        ? chains.filter((chain) => chain.id === DEVELOPMENT_CHAIN_ID)
+        : chains;
       if (params.length === 2) {
         if (!Array.isArray(params[1])) return fail(-32602, "Expected chain IDs");
         const requested = new Set(params[1].map(quantity));
         // EIP-5792 omits unsupported queried chains instead of rejecting them.
-        selected = chains.filter((chain) => requested.has(BigInt(chain.id)));
+        selected = selected.filter((chain) => requested.has(BigInt(chain.id)));
       }
       return Object.fromEntries(
         selected.map((chain) => [
@@ -348,6 +357,8 @@ export class ConnectProvider {
       if (args.method === "wallet_switchEthereumChain") {
         if (params.length !== 1) return fail(-32602, "Invalid parameters");
         const id = quantity(object(params[0]).chainId);
+        if (this.#development && id !== BigInt(DEVELOPMENT_CHAIN_ID))
+          return fail(4902, "Development Connect supports only Base Sepolia");
         const next = chains.find((c) => BigInt(c.id) === id);
         if (!next) return fail(4902, "Unsupported chain");
         if (next.id !== this.#chain.id) {

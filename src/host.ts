@@ -20,6 +20,7 @@
  */
 
 import { isAddress } from "viem";
+import { hasInlineVaultDelegation, resolveEmbedConfig } from "./deployment";
 import type {
   IframeHostConfig,
   SupportedLocale,
@@ -360,10 +361,11 @@ export class IframeHost extends IframeChannelBase implements PublicIframeHost {
   private readonly scheduleMicrotask: typeof queueMicrotask;
 
   constructor(config: IframeHostConfig = {}) {
-    const iframeSrc = config.iframeSrc ?? DEFAULT_IFRAME_SRC;
+    const resolved = resolveEmbedConfig(config);
+    const iframeSrc = resolved.iframeSrc;
     const origin = new URL(iframeSrc).origin;
     super(origin, config.timeout ?? DEFAULT_REQUEST_TIMEOUT_MS);
-    this.config = { ...config, iframeSrc };
+    this.config = resolved;
     this.iframeOrigin = origin;
     const scheduleTimeout = globalThis.setTimeout;
     const cancelTimeout = globalThis.clearTimeout;
@@ -1120,9 +1122,9 @@ export class IframeHost extends IframeChannelBase implements PublicIframeHost {
       ...(this.config.container === undefined ? {} : { container: this.config.container }),
       // This presentation capability is sent only by the SDK that also delegates
       // credential get. Published older SDK URLs remain on the popup protocol.
-      iframeSrc: `${baseUrl}/${locale}${["https://embed.ohmywallet.xyz", "http://localhost:3122"].includes(this.iframeOrigin) ? "?vault=frame" : ""}`,
+      iframeSrc: `${baseUrl}/${locale}${hasInlineVaultDelegation(this.iframeOrigin, this.config) ? "?vault=frame" : ""}`,
       sandbox: sandboxValue,
-      ...(["https://embed.ohmywallet.xyz", "http://localhost:3122"].includes(this.iframeOrigin)
+      ...(hasInlineVaultDelegation(this.iframeOrigin, this.config)
         ? {
             allow: `publickey-credentials-get ${this.iframeOrigin}; publickey-credentials-create ${this.iframeOrigin}`,
           }

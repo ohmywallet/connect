@@ -43,6 +43,53 @@ SDK는 고정 Embed에만 GET을 위임하고, Embed는 고정 Vault에만 위�
 
 [기존 0.9.1 React 스타터](https://www.ohmywallet.xyz/examples/connect-starter.tsx.txt)도 같은 통합 API를 사용합니다. 변경된 시트 화면을 적용하려면 npm `0.9.2`를 설치해주세요. 아래 0.8.1 가이드는 별도의 호환 스타터를 사용합니다.
 
+### 분리된 개발 환경 연동 (0.9.3-dev.0 전용)
+
+아래 API는 별도 개발 프리릴리스 전용이며 **npm 0.9.2에는 없습니다**.
+연동 전에 npm `development` 태그에 `0.9.3-dev.0`이 발행됐는지와 개발 서비스의
+실제 배포 상태를 확인하고, `@ohmywallet/connect@0.9.3-dev.0`을 정확히 고정하세요.
+로컬 빌드나 이 예시만으로 패키지 발행·endpoint 준비가 완료된 것은 아닙니다.
+정식 `latest`는 계속 운영 환경을 기본값으로 사용합니다.
+
+```ts
+import { createConnectProvider } from "@ohmywallet/connect/unified";
+
+const provider = createConnectProvider({
+  environment: "development",
+  transport: "embedded",
+  account: "fee", // 준비된 Base Sepolia Safe는 "managed"를 사용하세요.
+  chainId: 84532,
+  locale: "ko",
+});
+```
+
+`environment`를 생략하면 기존 운영 기본값을 유지합니다. 개발 환경은 고정된
+`https://embed.dev.ohmywallet.xyz` → `https://vault.dev.ohmywallet.xyz` 배포를
+명시적으로 선택하며 RP ID는 `vault.dev.ohmywallet.xyz`입니다.
+임베딩과 Base Sepolia(`84532`)만 지원합니다. 다른 네트워크와 개발 WalletConnect는
+거부하며 운영 endpoint·다른 계정 종류·팝업으로 자동 전환하지 않습니다.
+개발 환경에서는 `hostConfig.iframeSrc`, `hostConfig.origin`, `hostConfig.sandbox`
+덮어쓰기를 거부합니다. 기존 기본 지갑 host API는
+`hostConfig: { environment: "development" }`로 같은 환경을 선택할 수 있으며,
+`createConnectProvider`에서는 최상위 `environment` 옵션을 사용하세요.
+
+검토된 개발 서비스 origin은 정확히 `http://localhost:4173`과
+`http://localhost:4174`입니다. 다른 호스트·포트는 별도 등록이 필요합니다.
+dApp의 CSP `frame-src`에 `https://embed.dev.ohmywallet.xyz`를 허용하세요.
+Permissions-Policy 헤더를 설정한다면
+`publickey-credentials-get=(self "https://embed.dev.ohmywallet.xyz")`를 위임하고,
+기본 지갑 생성에는
+`publickey-credentials-create=(self "https://embed.dev.ohmywallet.xyz")`도 위임하세요.
+SDK는 해당 iframe 권한을 위임하고 Embed는 고정 개발 Vault에 다시 위임합니다.
+중첩된 두 프레임의 CSP `frame-ancestors`도 실제 등록된 전체 조상을 허용해야 합니다.
+자식 프레임이 부모의 제한을 완화할 수는 없습니다.
+
+별도의 개발 패스키·지갑·테스트넷 faucet 토큰을 사용하세요. 운영 패스키를 부모
+도메인이나 related-origin 설정으로 공유하지 않습니다. 신규 기본 지갑은 명시적인
+생성 흐름을 사용하고, 관리 지갑 연결에는 Base Sepolia에서 미리 준비한 Safe가 필요합니다.
+credential 검증·사용자 동의·계정과 체인 바인딩·취소·만료·전송 결과 불확실 상태의
+기존 처리를 유지합니다. 실기기 인증과 실제 호스팅 연동 결과는 자동 검사와 구분해 보고하세요.
+
 ## 발행된 0.8.1 API (호환 유지)
 
 EIP-1193 Provider 또는 wagmi 커넥터로 dApp에 OhMyWallet을 연결하세요. 서비스에 맞는 연결 방식을 선택할 수 있습니다.

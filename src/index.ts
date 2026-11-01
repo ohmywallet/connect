@@ -26,6 +26,7 @@ import type {
 } from "./types";
 
 export { DEFAULT_IFRAME_SRC };
+export type { ConnectEnvironment } from "./deployment";
 
 /** Derivation-only host with an exact, declaration-safe public surface. */
 export class IframeHost {

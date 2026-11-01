@@ -43,6 +43,58 @@ A transaction hash does not mean execution success. If `-32003` includes `error.
 
 The [hosted 0.9.1 React starter](https://www.ohmywallet.xyz/examples/connect-starter.tsx.txt) demonstrates the same unified API; install npm `0.9.2` to use the updated sheet presentation. The 0.8.1 guide below uses a separate compatibility starter.
 
+### Isolated development integration (0.9.3-dev.0 only)
+
+The following API belongs to the separate development prerelease and is **not
+available in npm 0.9.2**. Before integrating, verify that `0.9.3-dev.0` is published
+under the npm `development` tag and that the development services are deployed.
+Pin `@ohmywallet/connect@0.9.3-dev.0` exactly; a local build or this example alone
+does not establish package publication or endpoint readiness. Stable `latest`
+continues to use the production environment by default.
+
+```ts
+import { createConnectProvider } from "@ohmywallet/connect/unified";
+
+const provider = createConnectProvider({
+  environment: "development",
+  transport: "embedded",
+  account: "fee", // Or "managed" for a prepared Base Sepolia Safe.
+  chainId: 84532,
+  locale: "en",
+});
+```
+
+Omitting `environment` preserves the production default. Development explicitly
+selects the fixed `https://embed.dev.ohmywallet.xyz` →
+`https://vault.dev.ohmywallet.xyz` deployment with RP ID
+`vault.dev.ohmywallet.xyz`. It supports embedded transport and Base Sepolia (`84532`)
+only. Other networks and development WalletConnect are rejected, with no switch to
+production endpoints, another account kind, or an automatic popup fallback.
+Development rejects `hostConfig.iframeSrc`, `hostConfig.origin`, and
+`hostConfig.sandbox` overrides. The root fee-host API can select the same environment
+with `hostConfig: { environment: "development" }`; use the top-level option with
+`createConnectProvider`.
+
+The reviewed development service origins are exactly `http://localhost:4173` and
+`http://localhost:4174`; other hosts or ports require a separate registration.
+Permit `https://embed.dev.ohmywallet.xyz` in the dApp's CSP `frame-src`. If setting a
+Permissions-Policy header, delegate
+`publickey-credentials-get=(self "https://embed.dev.ohmywallet.xyz")`; fee creation
+also requires
+`publickey-credentials-create=(self "https://embed.dev.ohmywallet.xyz")`.
+The SDK delegates the corresponding iframe permissions, and Embed delegates them
+to the fixed development Vault. Both nested frames' CSP `frame-ancestors` must also
+permit the complete registered ancestry. Parent policies cannot be repaired by a
+child frame.
+
+Use separate development passkeys, wallets, and faucet tokens. Production passkeys
+are not shared through the parent domain or related-origin configuration. New fee
+wallet creation is supported by its explicit creation flow; managed connection still
+requires a previously prepared Safe on Base Sepolia. Credential checks, user consent,
+account/chain binding, cancellation, expiry, and uncertain-submission handling remain
+required. Physical-device authentication and actual hosted integration must be
+reported separately from automated checks.
+
 ## Published 0.8.1 APIs (compatibility preserved)
 
 Connect OhMyWallet to your dApp with an EIP-1193 Provider or a wagmi connector. Choose the experience your service needs:

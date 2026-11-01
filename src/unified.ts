@@ -2,6 +2,8 @@ import { createAppProvider, type AppProviderOptions, type AppProviderState } fro
 import { ManagedEmbedProvider } from "./managed-embed";
 import { createProvider, ProviderRpcError } from "./provider";
 import type { IframeHostConfig, SupportedLocale } from "./types";
+import { DEVELOPMENT_CHAIN_ID, connectEnvironment, type ConnectEnvironment } from "./deployment";
+export type { ConnectEnvironment } from "./deployment";
 
 export type ConnectAccount = "managed" | "fee";
 export type ConnectTransport = "embedded" | "walletconnect";
@@ -12,9 +14,16 @@ interface CommonOptions {
 }
 export type UnifiedConnectOptions = CommonOptions &
   (
-    | { transport?: "embedded"; hostConfig?: IframeHostConfig; projectId?: never; metadata?: never }
+    | {
+        transport?: "embedded";
+        environment?: ConnectEnvironment;
+        hostConfig?: Omit<IframeHostConfig, "environment">;
+        projectId?: never;
+        metadata?: never;
+      }
     | {
         transport: "walletconnect";
+        environment?: "production";
         projectId: string;
         metadata: AppProviderOptions["metadata"];
         hostConfig?: never;
@@ -62,13 +71,22 @@ export class UnifiedConnectProvider {
   #destroyed = false;
   #pending = false;
   #readProvider?: { chainId: number; provider: ReturnType<typeof createProvider> };
+  readonly #environment: ConnectEnvironment;
 
   constructor(options: UnifiedConnectOptions = {}) {
+    this.#environment = connectEnvironment(options.environment);
     const account = options.account ?? "managed";
     const transport = options.transport ?? "embedded";
     if (!["managed", "fee"].includes(account) || !["embedded", "walletconnect"].includes(transport))
       throw new ProviderRpcError(-32602, "Invalid account or connection transport");
-    const chainId = options.chainId ?? 1;
+    const development = this.#environment === "development";
+    if (development && transport !== "embedded")
+      throw new ProviderRpcError(-32602, "Development Connect supports only embedded transport");
+    if (options.hostConfig && "environment" in options.hostConfig)
+      throw new ProviderRpcError(-32602, "Select environment through the Connect option");
+    const chainId = options.chainId ?? (development ? DEVELOPMENT_CHAIN_ID : 1);
+    if (development && chainId !== DEVELOPMENT_CHAIN_ID)
+      throw new ProviderRpcError(4902, "Development Connect supports only Base Sepolia");
     this.#state = Object.freeze({ account, transport, chainId, status: "idle", busy: false });
     if (options.transport === "walletconnect") {
       if (options.hostConfig !== undefined)
@@ -77,6 +95,7 @@ export class UnifiedConnectProvider {
     } else {
       const hostConfig = {
         ...options.hostConfig,
+        ...(development ? { environment: this.#environment } : {}),
         ...(options.locale ? { locale: options.locale } : {}),
       };
       this.#adapter =
@@ -159,7 +178,12 @@ export class UnifiedConnectProvider {
         this.#readProvider?.provider.destroy();
         this.#readProvider = {
           chainId: this.#state.chainId,
-          provider: createProvider({ chainId: this.#state.chainId }),
+          provider: createProvider({
+            chainId: this.#state.chainId,
+            ...(this.#environment === "development"
+              ? { hostConfig: { environment: this.#environment } }
+              : {}),
+          }),
         };
       }
       // This adapter receives only the closed public read-method set, never account or signing requests.

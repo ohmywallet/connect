@@ -77,6 +77,37 @@ async function connect(provider: ManagedEmbedProvider) {
   return request;
 }
 describe("managed Embed authenticated public RPC", () => {
+  it("binds development messages and credential delegation to the fixed development Embed", async () => {
+    const origin = "https://embed.dev.ohmywallet.xyz";
+    const provider = new ManagedEmbedProvider({ hostConfig: { environment: "development" } });
+    providers.push(provider);
+    const pending = provider.request({ method: "eth_requestAccounts" });
+    expect(fixture.surface.mock.calls[0]![0]).toMatchObject({
+      iframeSrc: `${origin}/en?account=managed`,
+      allow: `publickey-credentials-get ${origin}`,
+    });
+    const init = fixture.messages.find((item) => item.type === "OMW_MANAGED_INIT")!;
+    message({ type: "OMW_MANAGED_READY", version: 1, sessionId: init.sessionId }, ORIGIN);
+    expect(fixture.messages.some((item) => item.type === "OMW_MANAGED_REQUEST")).toBe(false);
+    message({ type: "OMW_MANAGED_READY", version: 1, sessionId: init.sessionId }, origin);
+    const request = fixture.messages.find((item) => item.type === "OMW_MANAGED_REQUEST")!;
+    const reply = result(request, [ADDRESS], { chainId: 84532 });
+    message(reply, ORIGIN);
+    expect(await provider.request({ method: "eth_accounts" })).toEqual([]);
+    message(reply, origin);
+    await expect(pending).resolves.toEqual([ADDRESS]);
+    expect(source.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ chainId: 84532 }),
+      origin
+    );
+    expect(await provider.request({ method: "eth_chainId" })).toBe("0x14a34");
+  });
+  it("rejects a mainnet managed account in the development environment", () => {
+    expect(
+      () => new ManagedEmbedProvider({ chainId: 8453, hostConfig: { environment: "development" } })
+    ).toThrow("Base Sepolia");
+    expect(fixture.surface).not.toHaveBeenCalled();
+  });
   it("is passive until consent and opens only the fixed managed iframe", async () => {
     const provider = create();
     expect(await provider.request({ method: "eth_accounts" })).toEqual([]);
