@@ -1849,6 +1849,38 @@ describe("IframeHost contentWindow access inventory", () => {
 });
 
 describe("IframeHost relay bootstrap", () => {
+  it("uses the isolated development endpoint and delegates create/get only to that origin", () => {
+    const origin = "https://embed.dev.ohmywallet.xyz";
+    const host = new IframeHost({ environment: "development" });
+    void host.connectWithSignerType({ signerType: "derivation" }).catch(() => undefined);
+    expect(fakeDocument.iframe!.src).toBe(`${origin}/en?vault=frame`);
+    expect(fakeDocument.iframe!.allow).toBe(
+      `publickey-credentials-get ${origin}; publickey-credentials-create ${origin}`
+    );
+    expect(fakeDocument.iframe!.attributes.get("sandbox")).toBe(
+      "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+    );
+    host.destroy();
+  });
+
+  it.each([
+    { iframeSrc: "https://embed.ohmywallet.xyz" },
+    { iframeSrc: "https://evil.example" },
+    { iframeSrc: "https://embed.dev.ohmywallet.xyz" },
+    { origin: "http://localhost:4173" },
+    { sandbox: "allow-scripts" },
+  ])("rejects development endpoint/authority overrides before creating an iframe: %o", (config) => {
+    expect(() => new IframeHost({ environment: "development", ...config })).toThrow("fixed");
+    expect(fakeDocument.iframe).toBeNull();
+  });
+
+  it("does not infer the development environment from a custom URL", () => {
+    expect(() => new IframeHost({ iframeSrc: "https://embed.dev.ohmywallet.xyz" })).toThrow(
+      "explicitly"
+    );
+    expect(fakeDocument.iframe).toBeNull();
+  });
+
   it("delegates fixed create/get to the maintained fee Embed relay without changing its sandbox", async () => {
     expect(DEFAULT_IFRAME_SRC).toBe(EMBED_ORIGIN);
 

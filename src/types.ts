@@ -386,6 +386,8 @@ export type SupportedLocale =
 
 /** IframeHost 설정 */
 export interface IframeHostConfig {
+  /** Fixed deployment selection. Development uses an isolated RP and reviewed Embed endpoint. */
+  environment?: import("./deployment").ConnectEnvironment;
   /** iframe src URL (기본값: https://embed.ohmywallet.xyz) */
   iframeSrc?: string;
   /** 요청 타임아웃 (ms, 기본값: 120000) */

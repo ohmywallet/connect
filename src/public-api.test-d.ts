@@ -111,6 +111,22 @@ const providerWallet = createWalletClient({ transport: custom(createProvider()) 
 void providerWallet;
 
 import { createConnectProvider } from "./unified";
+import type { ConnectEnvironment } from "./unified";
+const developmentEnvironment: ConnectEnvironment = "development";
+createConnectProvider({ environment: developmentEnvironment, account: "fee", chainId: 84532 });
+createConnectProvider({ environment: "development", account: "managed", transport: "embedded" });
+const invalidDevelopmentTransport = {
+  environment: "development",
+  transport: "walletconnect",
+  projectId: "id",
+  metadata: { name: "My dApp" },
+} as const;
+// @ts-expect-error Development does not use the production WalletConnect App.
+createConnectProvider(invalidDevelopmentTransport);
+// @ts-expect-error Environment is selected through the public Connect option.
+createConnectProvider({ hostConfig: { environment: "development" } });
+// @ts-expect-error Arbitrary environments cannot introduce new trust endpoints.
+createConnectProvider({ environment: "staging" });
 const managedWallet = createWalletClient({ transport: custom(createConnectProvider()) });
 createConnectProvider({ account: "fee", transport: "embedded", chainId: 1 });
 createConnectProvider({

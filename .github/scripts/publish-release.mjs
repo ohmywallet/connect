@@ -9,6 +9,12 @@ import { types as utilTypes } from "node:util";
 
 const packageName = "@ohmywallet/connect";
 const version = "0.9.2";
+const developmentVersion = "0.9.3-dev.0";
+function releaseVersion(value) {
+  if (value !== version && value !== developmentVersion) throw invalid("public release version");
+  return value;
+}
+const isDevelopment = (manifest) => manifest.version === developmentVersion;
 const publicRepository = "https://github.com/ohmywallet/connect";
 const publicRepositoryGit = `${publicRepository}.git`;
 const publicWorkflow = ".github/workflows/publish.yml";
@@ -223,13 +229,13 @@ function normalizeManifest(value) {
     if (
       manifest.schemaVersion !== 1 ||
       manifest.kind !== "connect-publication" ||
-      manifest.version !== version ||
+      ![version, developmentVersion].includes(manifest.version) ||
       manifest.packageName !== packageName ||
       typeof manifest.sourceSha !== "string" ||
       !shaPattern.test(manifest.sourceSha) ||
       typeof manifest.qualificationSha256 !== "string" ||
       !digestPattern.test(manifest.qualificationSha256) ||
-      manifest.artifactPath !== `release/connect-${version}.tgz` ||
+      manifest.artifactPath !== `release/connect-${manifest.version}.tgz` ||
       typeof manifest.artifactSha256 !== "string" ||
       !digestPattern.test(manifest.artifactSha256) ||
       !validIntegrity(manifest.artifactIntegrity) ||
@@ -456,9 +462,12 @@ export function createDefaultPublicPublisherOperations({
 
   return {
     async readRelease() {
-      const manifestPath = path.join(repositoryRoot, `release/connect-${version}.json`);
+      const selectedVersion =
+        env.CONNECT_RELEASE_TAG === `v${developmentVersion}` ? developmentVersion : version;
+      const manifestPath = path.join(repositoryRoot, `release/connect-${selectedVersion}.json`);
       const text = await readText(manifestPath, 64 * 1024, "public release manifest");
       const manifest = normalizeManifest(parseJson(text, 64 * 1024, "public release manifest"));
+      if (manifest.version !== selectedVersion) throw invalid("public release manifest version");
       if (`${JSON.stringify(manifest, null, 2)}\n` !== text) {
         throw invalid("public release manifest");
       }
@@ -501,7 +510,8 @@ export function createDefaultPublicPublisherOperations({
 
     async readWorkflowContext() {
       const requestedTag = env.CONNECT_RELEASE_TAG;
-      if (requestedTag !== `v${version}`) throw invalid("public workflow tag");
+      if (requestedTag !== `v${version}` && requestedTag !== `v${developmentVersion}`)
+        throw invalid("public workflow tag");
       const tagResult = await run("git", ["rev-parse", `refs/tags/${requestedTag}^{commit}`], {
         cwd: repositoryRoot,
         env: npmEnvironment,
@@ -553,7 +563,7 @@ export function createDefaultPublicPublisherOperations({
       const metadata = parseJson(metadataResult.stdout, 64 * 1024, "public release package");
       if (
         metadata?.name !== packageName ||
-        metadata?.version !== version ||
+        metadata?.version !== manifest.version ||
         metadata?.repository?.type !== "git" ||
         metadata?.repository?.url !== publicRepositoryGit ||
         Reflect.ownKeys(metadata.repository).length !== 2
@@ -593,13 +603,43 @@ export function createDefaultPublicPublisherOperations({
       return Object.freeze({ integrity: dist.integrity, attestationsUrl: attestations.url });
     },
 
-    async publishNpm({ artifactPath }) {
-      await run("npm", ["publish", artifactPath, "--access", "public", "--provenance"], {
-        cwd: repositoryRoot,
-        env: npmEnvironment,
-        stdoutLimitBytes: 256 * 1024,
-        stderrLimitBytes: 128 * 1024,
-      });
+    async readStableLatest() {
+      const response = await fetchImpl(
+        "https://registry.npmjs.org/-/package/@ohmywallet%2fconnect/dist-tags",
+        {
+          headers: { accept: "application/json" },
+          redirect: "error",
+          signal: AbortSignal.timeout(30_000),
+        }
+      );
+      if (!response.ok) throw invalid("npm stable dist-tag observation");
+      const tags = plainObject(
+        parseJson(await response.text(), 64 * 1024, "npm dist-tags"),
+        "npm dist-tags"
+      );
+      if (tags.latest !== version) throw invalid("npm stable dist-tag observation");
+      return version;
+    },
+
+    async publishNpm({ artifactPath, manifest = { version } }) {
+      const selected = releaseVersion(manifest.version);
+      await run(
+        "npm",
+        [
+          "publish",
+          artifactPath,
+          "--access",
+          "public",
+          "--provenance",
+          ...(selected === developmentVersion ? ["--tag", "development"] : []),
+        ],
+        {
+          cwd: repositoryRoot,
+          env: npmEnvironment,
+          stdoutLimitBytes: 256 * 1024,
+          stderrLimitBytes: 128 * 1024,
+        }
+      );
     },
 
     async verifyExistingPublication({ manifest, publication, context }) {
@@ -657,11 +697,20 @@ export async function publishCommittedRelease({
     )
   );
   await atStage("payload-check", () => operations.verifyPayload({ ...release, context }));
+  const stableLatest = isDevelopment(release.manifest)
+    ? await atStage("stable-tag-before", () => operations.readStableLatest())
+    : undefined;
+  if (isDevelopment(release.manifest) && stableLatest !== version) throw invalid("stable dist-tag");
   const publication = await atStage("registry-check", () =>
     operations.readRegistryPublication({ manifest: release.manifest, context })
   );
   if (publication === null) {
     await atStage("npm-publish", () => operations.publishNpm({ ...release, context }));
+    if (
+      isDevelopment(release.manifest) &&
+      (await atStage("stable-tag-after", () => operations.readStableLatest())) !== stableLatest
+    )
+      throw invalid("stable dist-tag changed");
     return Object.freeze({
       status: "published",
       version: release.manifest.version,
@@ -671,6 +720,11 @@ export async function publishCommittedRelease({
   await atStage("existing-publication-check", () =>
     operations.verifyExistingPublication({ ...release, publication, context })
   );
+  if (
+    isDevelopment(release.manifest) &&
+    (await atStage("stable-tag-after", () => operations.readStableLatest())) !== stableLatest
+  )
+    throw invalid("stable dist-tag changed");
   return Object.freeze({
     status: "already-published",
     version: release.manifest.version,

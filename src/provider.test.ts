@@ -74,6 +74,35 @@ const transaction = () =>
     method: "eth_sendTransaction",
     params: [{ from: account.address, to: other.address, value: "0x1" }],
   });
+it("pins development fee accounts and their capabilities to Base Sepolia", async () => {
+  const development = new ConnectProvider({ hostConfig: { environment: "development" } }, host);
+  expect(await development.request({ method: "eth_chainId" })).toBe("0x14a34");
+  await development.request({ method: "eth_requestAccounts" });
+  await expect(
+    development.request({ method: "wallet_getCapabilities", params: [account.address] })
+  ).resolves.toEqual({
+    "0x14a34": { atomic: { status: "unsupported" } },
+  });
+  await expect(
+    development.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x1" }] })
+  ).rejects.toMatchObject({ code: 4902 });
+  await expect(
+    development.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x2105" }] })
+  ).rejects.toMatchObject({ code: 4902 });
+  expect(await development.request({ method: "eth_chainId" })).toBe("0x14a34");
+  expect(host.sign).not.toHaveBeenCalled();
+  expect(rpc.request).not.toHaveBeenCalled();
+  development.destroy();
+});
+it.each([1, 8453, 11155111])(
+  "rejects development fee chain %s before using the wallet",
+  (chainId) => {
+    expect(
+      () => new ConnectProvider({ chainId, hostConfig: { environment: "development" } }, host)
+    ).toThrow("Base Sepolia");
+    expect(host.connect).not.toHaveBeenCalled();
+  }
+);
 it("starts without an account and emits account/chain lifecycle", async () => {
   const accounts = vi.fn(),
     chain = vi.fn();
