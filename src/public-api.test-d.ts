@@ -115,14 +115,17 @@ import type { ConnectEnvironment } from "./unified";
 const developmentEnvironment: ConnectEnvironment = "development";
 createConnectProvider({ environment: developmentEnvironment, account: "fee", chainId: 84532 });
 createConnectProvider({ environment: "development", account: "managed", transport: "embedded" });
-const invalidDevelopmentTransport = {
+const developmentWalletConnect = {
   environment: "development",
   transport: "walletconnect",
   projectId: "id",
   metadata: { name: "My dApp" },
 } as const;
-// @ts-expect-error Development does not use the production WalletConnect App.
-createConnectProvider(invalidDevelopmentTransport);
+createConnectProvider(developmentWalletConnect);
+// @ts-expect-error WalletConnect cannot override the fixed App trust endpoint.
+createConnectProvider({ ...developmentWalletConnect, appUrl: "https://other.example" });
+// @ts-expect-error Embedded endpoints never configure a WalletConnect session.
+createConnectProvider({ ...developmentWalletConnect, hostConfig: {} });
 // @ts-expect-error Environment is selected through the public Connect option.
 createConnectProvider({ hostConfig: { environment: "development" } });
 // @ts-expect-error Arbitrary environments cannot introduce new trust endpoints.

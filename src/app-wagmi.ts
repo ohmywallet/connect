@@ -1,11 +1,13 @@
 import { createConnector } from "@wagmi/core";
 import { getAddress, type Address } from "viem";
 import { createAppProvider, type AppProvider, type AppProviderOptions } from "./app";
+import { DEVELOPMENT_CHAIN_ID, connectEnvironment } from "./deployment";
 
 const rpcError = (code: number, message: string) => Object.assign(new Error(message), { code });
 
 /** App sessions are explicit and single-chain. Config creation and reconnect never open a wallet. */
 export function ohmywalletApp(options: AppProviderOptions) {
+  const development = connectEnvironment(options.environment) === "development";
   return createConnector<AppProvider>((config) => {
     let provider: AppProvider | undefined;
     let providerChain: number | undefined;
@@ -55,10 +57,18 @@ export function ohmywalletApp(options: AppProviderOptions) {
         active.destroy();
       }
     }
-    function getProvider(chainId = options.chainId ?? config.chains[0].id) {
+    const defaultChain =
+      options.chainId ?? (development ? DEVELOPMENT_CHAIN_ID : config.chains[0].id);
+    function assertChain(chainId: number) {
+      if (
+        !config.chains.some((chain) => chain.id === chainId) ||
+        (development && chainId !== DEVELOPMENT_CHAIN_ID)
+      )
+        throw rpcError(4902, "Chain not configured for this App environment");
+    }
+    function getProvider(chainId = defaultChain) {
       if (!provider) {
-        if (!config.chains.some((chain) => chain.id === chainId))
-          throw rpcError(4902, "Chain not configured");
+        assertChain(chainId);
         const active = createAppProvider({ ...options, chainId });
         provider = active;
         providerChain = chainId;
@@ -75,9 +85,8 @@ export function ohmywalletApp(options: AppProviderOptions) {
       type: "ohmywallet-app",
       async connect({ chainId, isReconnecting, withCapabilities } = {}) {
         if (connecting !== undefined) throw rpcError(-32002, "Connection already pending");
-        const requestedChain = chainId ?? providerChain ?? options.chainId ?? config.chains[0].id;
-        if (!config.chains.some((chain) => chain.id === requestedChain))
-          throw rpcError(4902, "Chain not configured");
+        const requestedChain = chainId ?? providerChain ?? defaultChain;
+        assertChain(requestedChain);
         const version = ++generation;
         connecting = version;
         let active: AppProvider | undefined;
@@ -142,9 +151,10 @@ export function ohmywalletApp(options: AppProviderOptions) {
         return provider !== undefined && (await this.getAccounts()).length > 0;
       },
       async switchChain({ chainId }) {
+        assertChain(chainId);
         const chain = config.chains.find((item) => item.id === chainId);
         if (!chain) throw rpcError(4902, "Chain not configured");
-        const activeChain = providerChain ?? options.chainId ?? config.chains[0].id;
+        const activeChain = providerChain ?? defaultChain;
         if (chainId !== activeChain)
           throw rpcError(4200, "Disconnect and reconnect to choose another App network");
         return chain;

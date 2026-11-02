@@ -11,6 +11,7 @@ export const APP_METHODS = Object.freeze([
 ] as const);
 export const APP_EVENTS = Object.freeze(["accountsChanged", "chainChanged"]);
 export interface AppProtocolSession {
+  peer?: { metadata?: { url?: string } };
   sessionProperties?: Record<string, string>;
   topic: string;
   pairingTopic: string;

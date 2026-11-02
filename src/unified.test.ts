@@ -107,17 +107,42 @@ it.each([
   { environment: "staging" },
   { environment: "development", chainId: 1 },
   { environment: "development", chainId: 8453 },
-  {
-    environment: "development",
-    transport: "walletconnect",
-    projectId: "id",
-    metadata: { name: "dApp" },
-  },
+  { environment: "development", transport: "walletconnect", hostConfig: {} },
   { hostConfig: { environment: "development" } },
 ])("rejects invalid development configuration before selecting a transport: %o", (options) => {
   expect(() => createConnectProvider(options as UnifiedConnectOptions)).toThrow();
   for (const factory of Object.values(fixture.factories)) expect(factory).not.toHaveBeenCalled();
 });
+it.each(["managed", "fee"] as const)(
+  "explicitly selects development WalletConnect for %s without creating an embedded host",
+  async (account) => {
+    const provider = createConnectProvider({
+      environment: "development",
+      transport: "walletconnect",
+      account,
+      projectId: "ab".repeat(16),
+      metadata: { name: "Development service" },
+    });
+    expect(fixture.factories.app).toHaveBeenCalledExactlyOnceWith({
+      environment: "development",
+      transport: "walletconnect",
+      account,
+      chainId: 84532,
+      projectId: "ab".repeat(16),
+      metadata: { name: "Development service" },
+    });
+    expect(fixture.factories.fee).not.toHaveBeenCalled();
+    expect(fixture.factories.managed).not.toHaveBeenCalled();
+    expect(provider.currentState).toMatchObject({
+      account,
+      transport: "walletconnect",
+      chainId: 84532,
+    });
+    expect(adapter.request).not.toHaveBeenCalled();
+    expect(await provider.request({ method: "eth_requestAccounts" })).toEqual([ADDRESS]);
+    provider.destroy();
+  }
+);
 it("keeps development public RPC reads on Base Sepolia without creating a production host", async () => {
   const provider = createConnectProvider({ environment: "development" });
   adapter.request.mockResolvedValueOnce("0x10");

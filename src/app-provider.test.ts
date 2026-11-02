@@ -145,6 +145,77 @@ afterEach(async () => {
 
 describe("App provider lifecycle and pairing UI", () => {
   it.each(["managed", "fee"] as const)(
+    "connects development %s only through the fixed development App and Base Sepolia",
+    async (account) => {
+      const value = harness({
+        origin: "https://localhost:4173",
+        options: { ...OPTIONS, environment: "development", chainId: undefined, account },
+      });
+      value.client.stored = {
+        ...protocolSession(),
+        peer: { metadata: { url: "https://app.dev.ohmywallet.xyz" } },
+        sessionProperties: { "ohmywallet.account": account, "ohmywallet.connect": "1" },
+        namespaces: {
+          eip155: {
+            ...protocolSession().namespaces.eip155!,
+            chains: ["eip155:84532"],
+            accounts: [`eip155:84532:${ADDRESS}`],
+          },
+        },
+      };
+      expect(await value.provider.request({ method: "eth_accounts" })).toEqual([]);
+      expect(value.createClient).not.toHaveBeenCalled();
+      await connect(value);
+      expect(value.client.connect.mock.calls[0]![0]).toMatchObject({
+        requiredNamespaces: { eip155: { chains: ["eip155:84532"] } },
+        sessionProperties: { "ohmywallet.account": account, "ohmywallet.connect": "1" },
+      });
+      expect(value.createClient.mock.calls[0]![0]).toMatchObject({
+        metadata: { url: "https://localhost:4173" },
+        customStoragePrefix: "omw-app-development-test-instance",
+        relayUrl: "wss://relay.walletconnect.org",
+      });
+      value.client.stored.peer!.metadata!.url = "https://app.ohmywallet.xyz";
+      expect(await value.provider.request({ method: "eth_accounts" })).toEqual([]);
+      expect(value.provider.currentState.status).toBe("idle");
+    }
+  );
+
+  it.each([undefined, "https://app.ohmywallet.xyz", "https://app.dev.ohmywallet.xyz/ko"])(
+    "rejects a development approval with a missing or mismatched App identity: %s",
+    async (url) => {
+      const value = harness({
+        options: { ...OPTIONS, environment: "development", chainId: 84532 },
+      });
+      value.client.stored.peer = { metadata: { url } };
+      value.client.stored.sessionProperties = {
+        "ohmywallet.account": "managed",
+        "ohmywallet.connect": "1",
+      };
+      value.client.stored.namespaces.eip155!.chains = ["eip155:84532"];
+      value.client.stored.namespaces.eip155!.accounts = [`eip155:84532:${ADDRESS}`];
+      const pending = value.provider.request({ method: "eth_requestAccounts" });
+      const rejected = expect(pending).rejects.toMatchObject({ code: 4100 });
+      await flush();
+      expect(value.provider.currentState.pairing?.appUrl).toBe(
+        `https://app.dev.ohmywallet.xyz/ko#wc=${encodeURIComponent(URI)}&account=managed&chainId=84532`
+      );
+      value.client.approval.resolve(value.client.stored);
+      await rejected;
+      expect(value.client.request).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([1, 8453, 11155111])(
+    "rejects development chain %s before client initialization",
+    (chainId) => {
+      expect(() =>
+        harness({ options: { ...OPTIONS, environment: "development", chainId } })
+      ).toThrow(expect.objectContaining({ code: 4902 }));
+    }
+  );
+
+  it.each(["managed", "fee"] as const)(
     "binds explicit %s account intent in the encrypted proposal and approval",
     async (account) => {
       const value = harness({ options: { ...OPTIONS, account } });

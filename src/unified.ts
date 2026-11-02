@@ -4,6 +4,19 @@ import { createProvider, ProviderRpcError } from "./provider";
 import type { IframeHostConfig, SupportedLocale } from "./types";
 import { DEVELOPMENT_CHAIN_ID, connectEnvironment, type ConnectEnvironment } from "./deployment";
 export type { ConnectEnvironment } from "./deployment";
+export {
+  diagnoseConnectEnvironment,
+  getConnectErrorInfo,
+  type ConnectDiagnosticOptions,
+  type ConnectCheckStatus,
+  type ConnectCheckCode,
+  type ConnectDiagnosticCheck,
+  type ConnectEnvironmentDiagnostic,
+  type ConnectErrorCategory,
+  type ConnectErrorAction,
+  type ConnectDiagnosticErrorCode,
+  type ConnectErrorInfo,
+} from "./diagnostics";
 
 export type ConnectAccount = "managed" | "fee";
 export type ConnectTransport = "embedded" | "walletconnect";
@@ -23,7 +36,7 @@ export type UnifiedConnectOptions = CommonOptions &
       }
     | {
         transport: "walletconnect";
-        environment?: "production";
+        environment?: ConnectEnvironment;
         projectId: string;
         metadata: AppProviderOptions["metadata"];
         hostConfig?: never;
@@ -80,8 +93,6 @@ export class UnifiedConnectProvider {
     if (!["managed", "fee"].includes(account) || !["embedded", "walletconnect"].includes(transport))
       throw new ProviderRpcError(-32602, "Invalid account or connection transport");
     const development = this.#environment === "development";
-    if (development && transport !== "embedded")
-      throw new ProviderRpcError(-32602, "Development Connect supports only embedded transport");
     if (options.hostConfig && "environment" in options.hostConfig)
       throw new ProviderRpcError(-32602, "Select environment through the Connect option");
     const chainId = options.chainId ?? (development ? DEVELOPMENT_CHAIN_ID : 1);
@@ -91,7 +102,7 @@ export class UnifiedConnectProvider {
     if (options.transport === "walletconnect") {
       if (options.hostConfig !== undefined)
         throw new ProviderRpcError(-32602, "Embed configuration does not apply to WalletConnect");
-      this.#adapter = createAppProvider({ ...options, account });
+      this.#adapter = createAppProvider({ ...options, account, chainId });
     } else {
       const hostConfig = {
         ...options.hostConfig,

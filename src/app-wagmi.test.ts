@@ -10,7 +10,7 @@ import {
   switchChain,
 } from "@wagmi/core";
 import { http } from "viem";
-import { mainnet, sepolia } from "viem/chains";
+import { baseSepolia, mainnet, sepolia } from "viem/chains";
 import { ohmywalletApp } from "./app-wagmi";
 import type { AppProviderOptions } from "./app";
 
@@ -100,6 +100,30 @@ function setup() {
   });
   return { config, connector: config.connectors[0]! };
 }
+
+it("pins development to Base Sepolia even when mainnet is the first configured chain", async () => {
+  const selected = { ...options, environment: "development" as const };
+  const config = createConfig({
+    chains: [mainnet, baseSepolia],
+    connectors: [ohmywalletApp(selected)],
+    transports: { [mainnet.id]: http(), [baseSepolia.id]: http() },
+    storage: null,
+    multiInjectedProviderDiscovery: false,
+  });
+  const connector = config.connectors[0]!;
+  expect(await reconnect(config)).toEqual([]);
+  expect(fixture.authenticate).not.toHaveBeenCalled();
+  const passiveProviders = fixture.factory.mock.calls.length;
+  await expect(connector.connect({ chainId: mainnet.id })).rejects.toMatchObject({ code: 4902 });
+  expect(fixture.factory).toHaveBeenCalledTimes(passiveProviders);
+  await connect(config, { connector });
+  expect(fixture.factory).toHaveBeenCalledExactlyOnceWith({ ...selected, chainId: baseSepolia.id });
+  expect(getConnection(config).chainId).toBe(baseSepolia.id);
+  await expect(connector.switchChain!({ chainId: mainnet.id })).rejects.toMatchObject({
+    code: 4902,
+  });
+  await disconnect(config);
+});
 
 it("does not authenticate or restore accounts on config creation or reconnect", async () => {
   const { config, connector } = setup();
