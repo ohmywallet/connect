@@ -73,8 +73,11 @@ const provider = createConnectProvider({
 `hostConfig: { environment: "development" }`로 같은 환경을 선택할 수 있으며,
 `createConnectProvider`에서는 최상위 `environment` 옵션을 사용하세요.
 
-검토된 개발 서비스 origin은 정확히 `http://localhost:4173`과
-`http://localhost:4174`입니다. 다른 호스트·포트는 별도 등록이 필요합니다.
+검토된 개발 서비스 origin은 정확히 `http://localhost:4173`, `http://localhost:4174`,
+`https://localhost:4173`, `https://localhost:4174`입니다. 실제 패스키 검증에는 신뢰된
+인증서의 HTTPS 두 주소를 사용합니다. HTTP localhost가 secure context여도 Chrome·Brave는
+HTTPS Vault iframe의 인증을 창 표시 전에 거절할 수 있습니다. HTTP 두 주소는 기존 호환용이며
+다른 호스트·포트는 별도 등록이 필요합니다.
 dApp의 CSP `frame-src`에 `https://embed.dev.ohmywallet.xyz`를 허용하세요.
 Permissions-Policy 헤더를 설정한다면
 `publickey-credentials-get=(self "https://embed.dev.ohmywallet.xyz")`를 위임하고,
@@ -89,6 +92,118 @@ SDK는 해당 iframe 권한을 위임하고 Embed는 고정 개발 Vault에 다�
 생성 흐름을 사용하고, 관리 지갑 연결에는 Base Sepolia에서 미리 준비한 Safe가 필요합니다.
 credential 검증·사용자 동의·계정과 체인 바인딩·취소·만료·전송 결과 불확실 상태의
 기존 처리를 유지합니다. 실기기 인증과 실제 호스팅 연동 결과는 자동 검사와 구분해 보고하세요.
+
+### 개발 후보 0.9.3-dev.1: 진단과 WalletConnect (미발행)
+
+아래 기능은 이 소스 버전의 추가 사항이며 **발행된 `0.9.3-dev.0`에는 없습니다**.
+준비한 후보는 `0.9.3-dev.1`입니다. 소비자가 사용하기 전에 새 npm 발행과 이에 맞는 개발 App·Vault·Embed 배포를
+확인해야 합니다. 기존 npm tarball·태그·HTTP 발행 증적을 덮어쓰지 않습니다.
+위 네 origin은 현재 서버 등록 목록이며, 과거 tarball 안의 README가 바뀌었다는 뜻이 아닙니다.
+후보 버전의 정식 개발 배포 검증은 App·Embed·Vault가 같은 불변 소스를 사용하고,
+두 localhost origin에서 신뢰된 HTTPS 검사를 통과하도록 요구합니다.
+자세한 순서는 [릴리스 절차](../../scripts/connect-release/README.md#fixed-development-prerelease)를 참고하세요.
+
+```ts
+import {
+  createConnectProvider,
+  diagnoseConnectEnvironment,
+  getConnectErrorInfo,
+} from "@ohmywallet/connect/unified";
+
+const options = {
+  environment: "development",
+  transport: "embedded",
+  account: "managed",
+  chainId: 84532,
+} as const;
+const report = diagnoseConnectEnvironment(options);
+// 사용자가 연결하기 전에 실패·미확인 설정을 안내합니다.
+// ready-for-attempt도 실제 패스키 인증·PRF 성공을 뜻하지 않습니다.
+const provider = createConnectProvider(options);
+try {
+  // 사용자가 명시적으로 연결한 경우에만 실행합니다.
+  await provider.request({ method: "eth_requestAccounts" });
+} catch (error) {
+  const info = getConnectErrorInfo(error, { environment: "development" });
+  // 고정 code/category/nextAction으로 안내하며 자동으로 재시도하지 않습니다.
+}
+```
+
+`diagnoseConnectEnvironment()`는 읽기 전용
+`{ environment, transport, account, chainId, setupUrl, serviceOrigin?, status, checks }`를
+반환합니다. 설정 상태는 `blocked | unknown | ready-for-attempt`, 각 고정 check의
+상태는 `pass | fail | unknown`입니다. 네트워크·저장소·credential API를 호출하지
+않습니다. 등록 확인은 SDK의 고정 개발 목록과 비교하며 실제 배포 서버 조회가 아닙니다.
+GET 정책은 인식된 현재 문서 자체의 명확한 금지만 차단으로 표시합니다. 문서 정책만으로
+실제 Embed iframe의 container 위임을 확정할 수 없어, 문서가 허용되거나 다른 출처를 조회해도
+위임 성공으로 표시하지 않습니다. 이 상태는 실제 연결 전까지 미확인입니다. dApp이 Vault에
+직접 위임할 필요는 없습니다. 인식할 수 없는 정책 API도 미확인입니다. HTTPS 주소·API 존재만으로
+인증서 신뢰·원격 CSP/정책·실제 패스키·PRF 성공을 알 수 없으므로 해당 항목은 항상
+`unknown`입니다. WalletConnect는 dApp 브라우저의 WebAuthn API를 요구하지 않으며,
+이 helper는 project ID·metadata·relay·별도 App 브라우저의 호환성을 확인하지 않습니다.
+
+`unknown`은 거부가 아닌 미확인 상태입니다. 사용자가 명시적으로 연결할 수 있게 유지하되
+인증을 자동으로 시작하지 않습니다.
+
+`getConnectErrorInfo()`는 고정된 `{ code, category, nextAction, setupUrl? }` 또는
+`null`을 반환합니다. own data property만 해석하며 외부/네이티브 예외 원문·상속값·getter를
+표시하지 않습니다. 관리 연결의 기존 JSON-RPC 숫자 `-32000`과 고정 `error.message`
+형식은 유지합니다. 새 상태 진단은 관리 Embed 연결에만 적용되며 일반 App 서명이나
+수신 작업의 오류 의미를 넓히지 않습니다.
+
+| 고정 코드               | 의미                                               | 다음 행동                                            |
+| ----------------------- | -------------------------------------------------- | ---------------------------------------------------- |
+| `SAFE_NOT_DEPLOYED`     | 요청 체인의 실제 빈 Safe 코드를 새로 확인          | 고정 App을 직접 열어 해당 네트워크의 Safe 준비       |
+| `SAFE_PROFILE_MISMATCH` | 공식 계약 또는 현재 Safe 설정이 지원 프로필과 다름 | 설정 확인. 자동 생성·교체하지 않음                   |
+| `SAFE_READ_UNAVAILABLE` | 상태를 조회하지 못함                               | 잠시 후 수동 재시도. 미생성·잔액 0으로 추측하지 않음 |
+| `INVALID_REQUEST`       | 요청을 수락하지 못했으며 준비 상태는 알 수 없음    | 요청 확인. Safe가 없다고 단정하지 않음               |
+
+인증 오류는 기존 고정 코드를 유지합니다. `-32003`은 제출 불확실이므로 새 전송 전에
+거래를 확인합니다. 진단 결과는 서명 권한이나 지갑 전환·생성·송금·추가 인증의 동의가 아닙니다.
+
+다음 개발 WalletConnect는 환경을 명시적으로 선택합니다.
+
+```ts
+const provider = createConnectProvider({
+  environment: "development",
+  transport: "walletconnect",
+  account: "managed", // 또는 명시적으로 "fee"
+  chainId: 84532,
+  projectId: "<공개 Reown project ID 32자리>",
+  metadata: { name: "개발 서비스" },
+});
+```
+
+현재 유효한 `state.pairing.appUrl` 또는 QR만 연결에 사용합니다. 고정
+`https://app.dev.ohmywallet.xyz`와 개발 Vault/RP·Base Sepolia를 사용하며 운영 fallback,
+임의 endpoint를 지원하지 않습니다. dApp SDK의 승인 권한은 인스턴스 메모리에만 있고
+새로고침 후 자동 복원하지 않습니다. App WalletKit은 별도 개발 prefix에 승인 세션 정보를
+영속 보관할 수 있으나 현재 지갑·정확한 profile만 허용하고 Safe 상태 확인·Vault 승인을
+우회하지 않습니다. 세션은 한 계정·한 체인에
+고정되고 변경하려면 직접 연결을 해제하고 다시 연결합니다. 서명 요청은
+`personal_sign`, `eth_signTypedData_v4`, `eth_sendTransaction`이며 공개 조회도 기존의
+닫힌 메서드 목록을 유지합니다. 관리 지갑 서명은 해당 체인의 ERC-1271로 검증해야 합니다.
+App·Vault의 사용자 승인, 패스키/PRF 호환성, 만료·제출 불확실성 처리는 그대로 필요합니다.
+
+peer가 제공한 `metadata.url` 비교는 환경 일관성 확인이며 암호학적인 App origin
+증명이 아닙니다. 관리 계정은 계약 서명 검증을 유지하세요. 소비자의 CSP `connect-src`에는
+설정된 `wss://relay.walletconnect.org`와 기존 공개 RPC가 필요합니다. 다른 CSP 지시문은
+유지하고, upstream SignClient의 추가 목적지는 실제 격리 네트워크 검사 전까지 미확인으로
+둡니다. 와일드카드를 추가하지 마세요. App 이동 URL은 relay endpoint와 다릅니다.
+
+optional peer는 `@walletconnect/sign-client`의 `^2.23.10` 범위입니다. 지갑 소스의 공개
+project ID만으로 Reown 계정 소유권이나 해당 서비스 origin 허용을 알 수 없습니다.
+비공개 환경값을 복사하지 말고 사용자 소유 프로젝트와 HTTPS localhost 허용 목록을
+확인하세요. 확인 전에는 pairing을 비활성 상태로 유지합니다.
+
+관리 Safe는 고정 개발 App에서 **같은 개발 패스키**로 **Base Sepolia를 선택해** 먼저
+준비합니다. 결제 토큰은 관리 Safe, 생성·relay 가스비용 native test ETH는 BASIC index 0
+수수료 지갑에 둡니다. 두 주소는 다릅니다. 상태를 모르면 미생성으로 추측하지 않습니다.
+준비 링크는 사용자가 직접 열며 Safe 생성이나 송금을 자동 실행하지 않습니다.
+준비를 마친 뒤 dApp으로 돌아와 새 연결을 시작합니다.
+
+[브라우저 검증 표](../../docs/architecture/connect-browser-verification.md)에서 자동 검사와
+실기기 증적, 남은 기기 검증을 구분합니다.
 
 ## 발행된 0.8.1 API (호환 유지)
 
@@ -207,7 +322,7 @@ const [account] = (await provider.request({
 
 `appUrl`은 사용자가 직접 누르는 링크로 표시하세요. 새 탭을 사용한다면 `target="_blank" rel="noopener noreferrer"`를 설정합니다. 언어가 적용된 고정 App 주소이며 비공개 연결 URI는 fragment에만 담깁니다. `uri`는 QR 내용으로 사용하고, query·분석 도구·로그·영속 저장소에 넣지 마세요. 연결 완료·대기 해제·취소·종료·만료 시 QR과 링크를 지웁니다. App을 열거나 QR을 스캔하는 것만으로 연결을 승인하지 않습니다.
 
-현재 App 링크·QR 경로는 App에서 배포·현재 제어권을 확인한 관리 지갑(Safe)을 연결합니다. 이 경로에서는 수수료 지갑 연결을 제공하지 않습니다. 어댑터는 EOA라고 가정하지 않고 서명을 전달하며, 계정 종류는 SDK 옵션으로 지정하지 않습니다. 세션은 체인 하나와 계정 하나에 고정됩니다. 변경하려면 명시적으로 연결을 끊고 다시 연결하며, 바뀐 세션을 조용히 받아들이지 않습니다. 세션은 메모리에서만 유지하고 새로고침 뒤 자동 복원하지 않습니다.
+계정을 명시하지 않는 기존 App 링크·QR 경로는 배포·현재 제어권을 확인한 관리 지갑(Safe) 기본값을 유지합니다. 관리 지갑 또는 수수료 지갑을 명시적으로 선택하려면 위 unified API를 사용합니다. 어댑터는 EOA라고 가정하지 않고 서명을 전달합니다. 세션은 체인 하나와 계정 하나에 고정됩니다. 변경하려면 명시적으로 연결을 끊고 다시 연결하며, 바뀐 세션을 조용히 받아들이지 않습니다. 세션은 메모리에서만 유지하고 새로고침 뒤 자동 복원하지 않습니다.
 
 `personal_sign`, `eth_signTypedData_v4`, `eth_sendTransaction`은 익숙한 EIP-1193 요청으로 사용합니다. 사용자는 App과 Vault에서 요청을 확인하고 승인합니다. Safe 서명은 컨트랙트 서명이므로 연결한 체인에서 ERC-1271로 검증해야 합니다. 컨트랙트를 지원하는 viem 검증 기능 등을 사용할 수 있으며, EOA 주소 복구만으로 검증하면 안 됩니다. 일부 서비스나 EOA 전용 permit 서명은 관리 지갑과 호환되지 않습니다.
 

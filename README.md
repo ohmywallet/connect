@@ -75,8 +75,15 @@ Development rejects `hostConfig.iframeSrc`, `hostConfig.origin`, and
 with `hostConfig: { environment: "development" }`; use the top-level option with
 `createConnectProvider`.
 
-The reviewed development service origins are exactly `http://localhost:4173` and
-`http://localhost:4174`; other hosts or ports require a separate registration.
+The reviewed development service origins are exactly `http://localhost:4173`,
+`http://localhost:4174`, `https://localhost:4173` and `https://localhost:4174`.
+Use the HTTPS pair with a locally trusted certificate for native passkey testing.
+Chrome and Brave can reject an HTTPS Vault's WebAuthn request under an HTTP
+localhost top-level page before showing authentication UI, even when that page is
+a secure context. The HTTP pair remains for compatibility; other hosts or ports
+require a separate registration. See the
+[development environment guide](../../docs/architecture/development-environment.md#independent-membership-dapp-handoff)
+for the browser TLS checks and verification limits.
 Permit `https://embed.dev.ohmywallet.xyz` in the dApp's CSP `frame-src`. If setting a
 Permissions-Policy header, delegate
 `publickey-credentials-get=(self "https://embed.dev.ohmywallet.xyz")`; fee creation
@@ -87,6 +94,11 @@ to the fixed development Vault. Both nested frames' CSP `frame-ancestors` must a
 permit the complete registered ancestry. Parent policies cannot be repaired by a
 child frame.
 
+HTTPS origins require their own deployed server-side registrations. After those
+are ready, the pinned `0.9.3-dev.0` runtime supports the consumer's HTTPS origin
+without an SDK runtime change or npm republication. Preserve the existing HTTP
+publication proof as historical evidence; it does not verify the added origins.
+
 Use separate development passkeys, wallets, and faucet tokens. Production passkeys
 are not shared through the parent domain or related-origin configuration. New fee
 wallet creation is supported by its explicit creation flow; managed connection still
@@ -94,6 +106,129 @@ requires a previously prepared Safe on Base Sepolia. Credential checks, user con
 account/chain binding, cancellation, expiry, and uncertain-submission handling remain
 required. Physical-device authentication and actual hosted integration must be
 reported separately from automated checks.
+
+### Development candidate 0.9.3-dev.1: diagnostics and WalletConnect (unpublished)
+
+The following additions describe this source revision. They are **not present in
+published `0.9.3-dev.0`**. The prepared candidate is `0.9.3-dev.1`; its new npm release and matching development
+App/Vault/Embed deployments must be verified before a consumer uses them. Existing
+npm tarballs, dist-tags and the original HTTP publication evidence are immutable.
+The four service origins above describe current server registration, not a claim
+that the README inside the historical tarball has been replaced.
+The candidate's canonical release profile requires App, Embed and Vault from the
+same immutable source, plus trusted HTTPS verification on both localhost origins.
+See the [release procedure](../../scripts/connect-release/README.md#fixed-development-prerelease).
+
+```ts
+import {
+  createConnectProvider,
+  diagnoseConnectEnvironment,
+  getConnectErrorInfo,
+} from "@ohmywallet/connect/unified";
+
+const options = {
+  environment: "development",
+  transport: "embedded",
+  account: "managed",
+  chainId: 84532,
+} as const;
+const report = diagnoseConnectEnvironment(options);
+// Present failed/unknown checks before the user's explicit connection action.
+// Even "ready-for-attempt" is not a successful passkey or PRF check.
+const provider = createConnectProvider(options);
+try {
+  // Call from the user's explicit connection action.
+  await provider.request({ method: "eth_requestAccounts" });
+} catch (error) {
+  const info = getConnectErrorInfo(error, { environment: "development" });
+  // Use fixed code/category/nextAction for local UI; never automatically retry.
+}
+```
+
+`diagnoseConnectEnvironment()` returns an immutable
+`{ environment, transport, account, chainId, setupUrl, serviceOrigin?, status, checks }`.
+Configuration `status` is `blocked`, `unknown`, or `ready-for-attempt`; each closed
+check has `code` and `pass | fail | unknown`. It performs no network, storage or
+credential operation. The service registration check compares fixed development
+metadata; it does not ping deployed services. It reports a recognized current-document
+GET denial as a local blocker. Document policy alone cannot establish the actual
+Embed iframe's container policy: an allowed document or a cross-origin query is
+not a delegation pass. That finding remains unknown until the actual connection;
+unavailable or unrecognized policy introspection is also unknown. No direct dApp
+delegation to Vault is required. HTTPS scheme and API presence cannot prove trusted
+TLS, remote CSP/permissions, a usable passkey, PRF support or successful native
+authentication; those checks remain unknown. WalletConnect does not require a
+WebAuthn API in the dApp browser, and this helper does not validate its project ID,
+metadata, relay or the separate App browser.
+
+Treat `unknown` as unresolved observation: keep an explicit user connection attempt
+available, without starting authentication automatically.
+
+`getConnectErrorInfo()` returns a fixed
+`{ code, category, nextAction, setupUrl? }` or `null`. It reads own data properties
+only; peer/native exception text, inherited values and property getters are not
+reflected. The existing managed JSON-RPC wrapper remains numeric `-32000` with a
+fixed `error.message` code. New readiness diagnostics apply only to managed Embed
+connection, not arbitrary App signing or receiving operations:
+
+| Fixed code              | Meaning                                                                                  | User action                                                          |
+| ----------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `SAFE_NOT_DEPLOYED`     | A fresh read on the requested chain confirms empty Safe code                             | Explicitly open the fixed wallet App and prepare that network's Safe |
+| `SAFE_PROFILE_MISMATCH` | The official contract or current Safe configuration does not match the supported profile | Check wallet settings; do not automatically create or replace it     |
+| `SAFE_READ_UNAVAILABLE` | The state could not be read                                                              | Retry manually later; do not infer no wallet or zero funds           |
+| `INVALID_REQUEST`       | The request could not be accepted; no readiness conclusion                               | Review the request without claiming the Safe is missing              |
+
+Authentication errors keep their existing fixed codes. `-32003` means an uncertain
+submission: check the transaction before any new send. No diagnosis grants signing
+control or authorizes account switching, setup, transfer or another authentication.
+
+For the next development WalletConnect adapter, select the environment explicitly:
+
+```ts
+const provider = createConnectProvider({
+  environment: "development",
+  transport: "walletconnect",
+  account: "managed", // Or an explicit "fee" account.
+  chainId: 84532,
+  projectId: "<your public 32-character Reown project ID>",
+  metadata: { name: "Development service" },
+});
+```
+
+Only the live `state.pairing.appUrl` or QR is a handoff. It uses the fixed
+`https://app.dev.ohmywallet.xyz`, development Vault/RP and Base Sepolia; there is no
+production fallback or arbitrary endpoint. The dApp SDK keeps authority in
+per-instance memory and never restores it after reload. App WalletKit can retain
+approved session metadata under its separate development prefix, accepting only
+the current wallet and exact profile; that does not bypass Safe checks or Vault
+approval. Account and chain remain fixed for a session; disconnect and reconnect
+to change them.
+Supported signing requests are `personal_sign`, `eth_signTypedData_v4`, and
+`eth_sendTransaction`; public reads keep their closed method set. Managed signatures
+require ERC-1271 verification on the connected chain. App/Vault user approval,
+passkey/PRF support, expiry and uncertain-submission handling still apply.
+
+The peer-provided `metadata.url` check is environment consistency metadata, not
+a cryptographic proof of App origin. Preserve contract-aware account verification.
+Consumer CSP `connect-src` must permit the configured `wss://relay.walletconnect.org`
+and the existing public RPC. Keep the other CSP directives. Additional upstream
+SignClient destinations remain unverified until an isolated real network test; do
+not add wildcard domains. The App handoff URL is navigation, not a relay endpoint.
+
+The optional peer is `@walletconnect/sign-client` with range `^2.23.10`. A public
+project ID in wallet source is not proof of Reown account ownership or permission
+for your service origin. Confirm your project and HTTPS localhost origin allowlist
+without copying private environment values. Until then, keep pairing disabled.
+
+Prepare a managed Safe in the fixed development App with the **same development
+passkey** and **Base Sepolia selected**. Payment tokens belong in the Safe; native
+test ETH for creation and relay belongs in its BASIC index 0 fee wallet. BASIC and
+Safe addresses differ. An unknown state is not proof of missing setup. Opening the
+setup link is explicit and neither creates a Safe nor transfers funds. After
+preparation, return to the dApp and start a fresh connection.
+
+See [the browser verification matrix](../../docs/architecture/connect-browser-verification.md)
+for automated versus attended evidence and the remaining device checks.
 
 ## Published 0.8.1 APIs (compatibility preserved)
 
@@ -212,7 +347,7 @@ const [account] = (await provider.request({
 
 Render `appUrl` as a user-clicked link, for example with `target="_blank" rel="noopener noreferrer"`. It points to the fixed localized App URL and carries the private pairing URI in the fragment. Use `uri` only as the QR payload. Do not put it in a query string, analytics, logs or persistent storage. Remove the pairing view on connection, idle, cancellation, closure and expiry. Opening App or scanning the QR code is not connection approval.
 
-The current App link and QR handoff connects a managed Safe account after App checks deployment and current control. Fee-wallet connection is not available through this handoff. The adapter transports signatures without assuming an EOA; account type is not an SDK option. One session is bound to one chain and one account. Changing either requires an explicit disconnect and new connection; a mutated session is rejected rather than silently switched. Sessions stay in memory, with no automatic restoration after a reload.
+The legacy App handoff without an explicit account option keeps its managed Safe default after App checks deployment and current control. For an explicit managed or fee account, use the unified API above. The adapter transports signatures without assuming an EOA. One session is bound to one chain and one account. Changing either requires an explicit disconnect and new connection; a mutated session is rejected rather than silently switched. Sessions stay in memory, with no automatic restoration after a reload.
 
 Use familiar EIP-1193 requests for `personal_sign`, `eth_signTypedData_v4` and `eth_sendTransaction`. Users still review and approve requests in App and Vault. Safe signatures are contract signatures: verify them with ERC-1271 on the connected chain, for example through a contract-aware viem verification action. EOA-only address recovery is insufficient. Some services and EOA-only permit signatures are incompatible with managed wallets.
 

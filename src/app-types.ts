@@ -1,7 +1,10 @@
 import type { SupportedLocale } from "./types";
+import type { ConnectEnvironment } from "./deployment";
 
 /** App connection is opt-in. The existing Embed provider remains independent. */
 export interface AppProviderOptions {
+  /** Explicitly selects the fixed App deployment; omission preserves production. */
+  environment?: ConnectEnvironment;
   /** Explicit account intent. Omission keeps the published managed App handoff unchanged. */
   account?: "managed" | "fee";
   projectId: string;

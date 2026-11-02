@@ -1,4 +1,5 @@
 import { isAddress } from "viem";
+import { DEVELOPMENT_CHAIN_ID, connectEnvironment, type ConnectEnvironment } from "./deployment";
 import { createClient, memoryStorage, type AppClientOptions } from "./app-client";
 import {
   APP_CHAIN_IDS,
@@ -41,6 +42,7 @@ const locales = [
   "ar",
 ];
 const UNKNOWN_SUBMISSION = "Transaction outcome unknown; check App activity before retrying";
+const DEVELOPMENT_APP_ORIGIN = "https://app.dev.ohmywallet.xyz";
 interface Context {
   topic: string;
   pairingTopic: string;
@@ -58,6 +60,7 @@ export interface AppProviderDependencies {
 /** Session authority stays in memory. This adapter never authenticates, signs or submits directly. */
 export class AppProviderRuntime {
   readonly #options: AppProviderOptions;
+  readonly #environment: ConnectEnvironment;
   readonly #dependencies: AppProviderDependencies;
   #state: AppProviderState;
   #client?: AppSignClient;
@@ -90,7 +93,15 @@ export class AppProviderRuntime {
       (options.locale !== undefined && !locales.includes(options.locale))
     )
       fail(-32602, "Invalid App connector configuration");
-    const chainId = options.chainId ?? 1;
+    try {
+      this.#environment = connectEnvironment(options.environment);
+    } catch {
+      fail(-32602, "Invalid App connector environment");
+    }
+    const development = this.#environment === "development";
+    const chainId = options.chainId ?? (development ? DEVELOPMENT_CHAIN_ID : 1);
+    if (development && chainId !== DEVELOPMENT_CHAIN_ID)
+      fail(4902, "Development App supports only Base Sepolia");
     if (!(APP_CHAIN_IDS as readonly number[]).includes(chainId))
       fail(4902, "Unsupported App network");
     const icons = options.metadata.icons ?? [];
@@ -108,7 +119,12 @@ export class AppProviderRuntime {
       })
     )
       fail(-32602, "Invalid App connector icons");
-    this.#options = { ...options, chainId, metadata: { ...options.metadata, icons: [...icons] } };
+    this.#options = {
+      ...options,
+      ...(development ? { account: options.account ?? "managed" } : {}),
+      chainId,
+      metadata: { ...options.metadata, icons: [...icons] },
+    };
     this.#dependencies = dependencies;
     this.#state = Object.freeze({ status: "idle", chainId, busy: false });
   }
@@ -248,6 +264,11 @@ export class AppProviderRuntime {
   }
   #sessionAccount(session: AppProtocolSession): string {
     if (
+      this.#environment === "development" &&
+      session.peer?.metadata?.url !== DEVELOPMENT_APP_ORIGIN
+    )
+      fail(4100, "Development App identity changed; reconnect explicitly");
+    if (
       this.#options.account !== undefined &&
       (session.sessionProperties?.["ohmywallet.connect"] !== "1" ||
         session.sessionProperties?.["ohmywallet.account"] !== this.#options.account)
@@ -349,7 +370,7 @@ export class AppProviderRuntime {
           icons: [...(this.#options.metadata.icons ?? [])],
         },
         storage,
-        customStoragePrefix: `omw-app-${(this.#dependencies.nonce ?? (() => crypto.randomUUID()))()}`,
+        customStoragePrefix: `omw-app-${this.#environment === "development" ? "development-" : ""}${(this.#dependencies.nonce ?? (() => crypto.randomUUID()))()}`,
         relayUrl: "wss://relay.walletconnect.org",
         logger: "silent",
         telemetryEnabled: false,
@@ -403,7 +424,7 @@ export class AppProviderRuntime {
     this.#expireAt(info.expiresAt, epoch);
     const pairing = Object.freeze({
       uri: info.uri,
-      appUrl: `https://app.ohmywallet.xyz/${this.#options.locale ?? "en"}#wc=${encodeURIComponent(info.uri)}${this.#options.account === undefined ? "" : `&account=${this.#options.account}&chainId=${this.#state.chainId}`}`,
+      appUrl: `${this.#environment === "development" ? DEVELOPMENT_APP_ORIGIN : "https://app.ohmywallet.xyz"}/${this.#options.locale ?? "en"}#wc=${encodeURIComponent(info.uri)}${this.#options.account === undefined ? "" : `&account=${this.#options.account}&chainId=${this.#state.chainId}`}`,
       expiresAt: info.expiresAt,
     });
     this.#stateChanged({ status: "pairing", chainId: this.#state.chainId, busy: true, pairing });
