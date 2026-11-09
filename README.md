@@ -107,12 +107,17 @@ account/chain binding, cancellation, expiry, and uncertain-submission handling r
 required. Physical-device authentication and actual hosted integration must be
 reported separately from automated checks.
 
-### Development candidate 0.9.3-dev.1: diagnostics and WalletConnect (unpublished)
+### Development 0.9.3-dev.3: security tooling and service alignment
 
-The following additions describe this source revision. They are **not present in
-published `0.9.3-dev.0`**. The prepared candidate is `0.9.3-dev.1`; its new npm release and matching development
-App/Vault/Embed deployments must be verified before a consumer uses them. Existing
+The diagnostics and WalletConnect APIs below are already present in published
+`0.9.3-dev.1`; they are absent from `0.9.3-dev.0`. The prepared `0.9.3-dev.3`
+candidate retains the build/test security updates and publication revalidation
+from the earlier dev.2 candidate, while aligning the three development services
+with their current source. Its SDK runtime APIs and protocol match dev.1. Its new npm
+release and matching development App/Vault/Embed deployments must be verified
+before release completion is claimed. Existing
 npm tarballs, dist-tags and the original HTTP publication evidence are immutable.
+The earlier dev.2 source tag and qualification artifacts remain unchanged.
 The four service origins above describe current server registration, not a claim
 that the README inside the historical tarball has been replaced.
 The candidate's canonical release profile requires App, Embed and Vault from the

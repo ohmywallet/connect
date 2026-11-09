@@ -9,7 +9,7 @@ import { types as utilTypes } from "node:util";
 
 const packageName = "@ohmywallet/connect";
 const version = "0.9.2";
-const developmentVersion = "0.9.3-dev.1";
+const developmentVersion = "0.9.3-dev.3";
 function releaseVersion(value) {
   if (value !== version && value !== developmentVersion) throw invalid("public release version");
   return value;
